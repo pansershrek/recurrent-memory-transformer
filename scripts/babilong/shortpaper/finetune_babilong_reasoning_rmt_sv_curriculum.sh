@@ -11,18 +11,18 @@ BACKBONE_CLS=transformers:AutoModelForSequenceClassification
 TASK_NAME=babilong_reasoning
 METRIC=exact_match
 
-ITERS=6000
+ITERS=20000
 TBS=32
 
 TGT_LEN=512
 MODEL_INPUT_SIZE=512
 
-INPUT_SEQ_LENS=(998 1497 1996 2495 2994 3493 3992 4491 4990)
-MAX_N_SEGMENTSS=(2 3 4 5 6 7 8 9 10)
-MEMORY_SIZES=(10 10 10 10 10 10 10 10)
-BSS=(2 2 2 1 1 1 1 1 1)
+INPUT_SEQ_LENS=(2495 2994 3493 3992 4491 4990)
+MAX_N_SEGMENTSS=( 5 6 7 8 9 10)
+MEMORY_SIZES=(10 10 10 10 10 10 10)
+BSS=(1 1 1 1 1 1 1)
 
-for N in 1 2
+for N in 1
 do
 
 for MODEL_NAME in bert-base-cased 
@@ -40,7 +40,7 @@ do
 
 SCHEDULER=linear
 
-for LR in 1e-04
+for LR in 5e-05
 do
 
 MODEL_CLS=modeling_rmt:RMTEncoderForSequenceClassification

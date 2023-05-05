@@ -16,7 +16,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm.auto import tqdm
 import horovod.torch as hvd
 
-from lm_experiments_tools.utils import rank_0, get_fn_param_names
+from lm_experiments_tools.utils import rank_0, get_fn_param_names, get_gpu_memory_usage
 
 logger = logging.getLogger(__name__)
 
@@ -538,6 +538,7 @@ class Trainer:
                 m_shape = getattr(metrics_data[k][0], 'shape', None)
                 if m_shape is None:
                     # data is not a tensor, collect it into python list
+                    print('metrics_data[k]', metrics_data[k], metrics_data)
                     metrics_data[k] = list(chain.from_iterable(metrics_data[k]))
                 elif len(m_shape) == 0:
                     # if scalars
@@ -626,6 +627,11 @@ class Trainer:
                         self.tb.add_scalar('gradients_global_norm/iterations', gnorm, self.n_iter)
                         self.tb.add_scalar('gradients_global_norm/samples', gnorm, self.n_iter * self.global_batch_size)
 
+                        if self.n_iter == 0:
+                            mem_usage = get_gpu_memory_usage()
+                            for k in mem_usage:
+                                self.tb.add_scalar(f'{k}/train', mem_usage[k], self.n_iter)
+
             # validation
             if self.valid_dataloader is not None and self.n_iter % self.args.valid_interval == 0:
                 # todo: we can use other metrics than loss here
@@ -645,6 +651,10 @@ class Trainer:
                     self.tb.add_scalar('patience/iterations', self.early_stopping_counter, self.n_iter)
                     self.tb.add_scalar('patience/samples', self.early_stopping_counter,
                                        self.n_iter * self.global_batch_size)
+                    if self.n_iter == 0:
+                        mem_usage = get_gpu_memory_usage()
+                        for k in mem_usage:
+                            self.tb.add_scalar(f'{k}/valid', mem_usage[k], self.n_iter)
                 if self.lr_drop_scheduler:
                     self.lr_drop_scheduler.step(valid_metric)
 
@@ -695,6 +705,11 @@ class Trainer:
                 if self.tb and write_tb:
                     self.tb.add_scalar(f'{k}/iterations/{split}', metrics[k], self.n_iter)
                     self.tb.add_scalar(f'{k}/samples/{split}', metrics[k], self.n_iter * self.global_batch_size)
+
+                    if self.n_iter == 0:
+                        mem_usage = get_gpu_memory_usage()
+                        for k in mem_usage:
+                            self.tb.add_scalar(f'{k}/train', mem_usage[k], self.n_iter)
         return metrics
 
     def load(self, load_path, reset_optimizer=False, reset_lr=False, reset_iteration=False) -> None:

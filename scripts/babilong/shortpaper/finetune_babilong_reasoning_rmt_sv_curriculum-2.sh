@@ -17,10 +17,10 @@ TBS=32
 TGT_LEN=512
 MODEL_INPUT_SIZE=512
 
-INPUT_SEQ_LENS=(998 1497 1996 2495 2994 3493 3992 4491 4990)
-MAX_N_SEGMENTSS=(2 3 4 5 6 7 8 9 10)
-MEMORY_SIZES=(10 10 10 10 10 10 10 10)
-BSS=(4 2 2 1 1 1 1 1 1)
+INPUT_SEQ_LENS=( 2994 3493)
+MAX_N_SEGMENTSS=( 6 7)
+MEMORY_SIZES=(10 10)
+BSS=(1 1 1 1 1 1 1)
 
 for N in 1 2
 do
@@ -38,7 +38,7 @@ BS=${BSS[j]}
 for SEGMENT_ORDERING in regular
 do
 
-SCHEDULER=constant_with_warmup
+SCHEDULER=linear
 
 for LR in 1e-05
 do
@@ -48,11 +48,11 @@ MODEL_CLS=modeling_rmt:RMTEncoderForSequenceClassification
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_babilong_reasoning_rmt.py \
-        --model_path ../runs/curriculum_task/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-{$MAX_N_SEGMENTS}seg_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_from_cpt_$((MAX_N_SEGMENTS-1))-${MAX_N_SEGMENTS}/run_$N \
+        --model_path ../runs/curriculum_task/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-{$MAX_N_SEGMENTS}seg_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_from_cpt_$((MAX_N_SEGMENTS-1))-${MAX_N_SEGMENTS}_V2/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/curriculum_task/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_$((INPUT_SEQ_LEN-499))-${TGT_LEN}-{$((MAX_N_SEGMENTS-1))}seg_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_from_cpt_$((MAX_N_SEGMENTS-2))-$((MAX_N_SEGMENTS-1))/run_$N \
+        --model_cpt ../runs/curriculum_task/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_$((INPUT_SEQ_LEN-499))-${TGT_LEN}-{$((MAX_N_SEGMENTS-1))}seg_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_from_cpt_$((MAX_N_SEGMENTS-2))-$((MAX_N_SEGMENTS-1))_V2/run_$N \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $MODEL_INPUT_SIZE \

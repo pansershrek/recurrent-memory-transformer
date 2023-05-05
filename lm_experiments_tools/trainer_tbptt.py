@@ -219,13 +219,16 @@ class Trainer:
 
         # Horovod: (optional) compression algorithm.
         compression = hvd.Compression.fp16 if self.args.fp16_allreduce else hvd.Compression.none
+        backward_passes_per_step=self.args.gradient_accumulation_steps
+        if self.args.k2 not in {1, -1}:
+            backward_passes_per_step *= self.args.k2
         # Horovod: wrap optimizer with DistributedOptimizer.
         self.optimizer = hvd.DistributedOptimizer(self.optimizer,
                                                   named_parameters=self.model.named_parameters(),
                                                   compression=compression,
                                                   op=hvd.Average,
                                                   gradient_predivide_factor=1.0,
-                                                  backward_passes_per_step=self.args.gradient_accumulation_steps,
+                                                  backward_passes_per_step=backward_passes_per_step,
                                                   )
 
         if args.lr_scheduler:

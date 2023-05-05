@@ -151,3 +151,17 @@ def prepare_run(args, logger=None, logger_fmt: str = '%(asctime)s - %(name)s - %
 
     if rank == 0 and args.model_path is None and logger is not None:
         logger.warning('model_path is not set: config, logs and checkpoints will not be saved.')
+
+
+import subprocess as sp
+NVIDIA_SMI_COMMAND = 'nvidia-smi --query-gpu=memory.used --format=csv'
+def get_gpu_memory_usage(gpu_ids=None):
+    sp_out = sp.check_output(NVIDIA_SMI_COMMAND.split())
+    gpu_mem = str(sp_out).split('\\n')[1:-1]
+    gpu_mem = list(map(lambda x: int(x.split(' MiB')[0]), gpu_mem))
+
+    if gpu_ids is None:
+        gpu_ids = range(len(gpu_mem))
+    gpu_names = [f'used_memory_gpu_{i}' for i in gpu_ids]
+    out = dict(zip(gpu_names, gpu_mem))
+    return out
