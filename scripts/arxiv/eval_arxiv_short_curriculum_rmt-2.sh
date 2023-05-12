@@ -9,7 +9,7 @@ CUDA_LAUNCH_BLOCKING=1
 MODEL_TYPE=decoder
 MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=transformers:AutoModelForCausalLM
-TASK_NAME=wikitext-2-v1
+TASK_NAME=arxiv
 
 ITERS=10000
 TBS=128
@@ -17,9 +17,8 @@ TBS=128
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(2 3 4 5 6 7 8 9 10)
-MEMORY_SIZES=(1 1 1 1 1 1 1 1 1)
-BSS=(16 16 8 8 4 4 2 2 1 1 1)
+MAX_N_SEGMENTSS=(1 2 3 4  )
+BSS=(32 16 16 8)
 
 for N in 1
 do
@@ -27,13 +26,16 @@ do
 for MODEL_NAME in gpt2
 do
 
-for (( j=0; j<${#MEMORY_SIZES[@]}; j++ ))
+for SOURCE_N_SEGMENTS in 5
 do
-MEMORY_SIZE=${MEMORY_SIZES[j]}
+
+for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
+do
+MEMORY_SIZE=5
 MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]} 
 INPUT_SEQ_LEN=$(((INPUT_SIZE-2*MEMORY_SIZE)*MAX_N_SEGMENTS))
 BS=${BSS[j]}
-K2=4
+K2=${SOURCE_N_SEGMENTS}
 
 for SEGMENT_ORDERING in regular
 do
@@ -44,18 +46,15 @@ do
 for LR in 1e-05
 do
 
-for SOURCE_N_SEGMENTS in 3 4 5 6
-do
-
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
-horovodrun --gloo -np $NP python run_finetuning_lm_multiseg_rmt_chunked.py \
+horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/lm_long/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_${SOURCE_N_SEGMENTS}-${MAX_N_SEGMENTS}_eval_segm_valid/run_$N \
+        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_${SOURCE_N_SEGMENTS}-${MAX_N_SEGMENTS}_eval/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/lm_long/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}_segm_valid/run_1 \
+        --model_cpt ../runs/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}/run_1 \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \

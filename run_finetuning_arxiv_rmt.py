@@ -233,34 +233,37 @@ if __name__ == '__main__':
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     global_batch_size = per_worker_batch_size * hvd.size()
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
-    train_dataloader = segmentDataLoaderOTF(train_dataset, batch_size=per_worker_batch_size, sampler=train_sampler,
-                                    block_size=block_size, 
-                                    history_size=history_size, 
-                                    shuffle=True,
-                                    collate_fn=collate_fn, **kwargs)
-    
-    
+    if not args.validate_only:
+        train_dataloader = segmentDataLoaderOTF(train_dataset, batch_size=per_worker_batch_size, sampler=train_sampler,
+                                        block_size=block_size, 
+                                        history_size=history_size, 
+                                        shuffle=True,
+                                        collate_fn=collate_fn, **kwargs)
+    else:
+        train_dataloader = None
 
     # get validation dataset
+    # max_samples = 1000 if args.validate_only else 100
+    max_samples = 100
     valid_dataloader = None
     if hvd.rank() == 0:
-        logger.info(f'preparing validation data from babilong')
+        logger.info(f'preparing validation data')
     valid_sampler = DistributedSampler(valid_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
     valid_dataloader = segmentDataLoaderOTF(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
                                     block_size=block_size, 
                                     history_size=history_size, 
                                     shuffle=False,
-                                    max_samples=100,
+                                    max_samples=max_samples,
                                     collate_fn=collate_fn, drop_last=True, **kwargs)
     
-    # get test dataset
-    test_sampler = DistributedSampler(test_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
-    test_dataloader = segmentDataLoaderOTF(test_dataset, batch_size=per_worker_batch_size, sampler=test_sampler,
-                                    block_size=block_size, 
-                                    history_size=history_size, 
-                                    shuffle=False,
-                                    max_samples=100,
-                                    collate_fn=collate_fn, drop_last=True, **kwargs)
+    # # get test dataset
+    # test_sampler = DistributedSampler(test_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
+    # test_dataloader = segmentDataLoaderOTF(test_dataset, batch_size=per_worker_batch_size, sampler=test_sampler,
+    #                                 block_size=block_size, 
+    #                                 history_size=history_size, 
+    #                                 shuffle=False,
+    #                                 max_samples=max_samples,
+    #                                 collate_fn=collate_fn, drop_last=True, **kwargs)
     
     if args.valid_interval is None:
         args.valid_interval = args.log_interval
@@ -413,15 +416,15 @@ if __name__ == '__main__':
             if hvd.rank() == 0:
                 logger.info('Runnning validation on valid data:')
             trainer.validate(valid_dataloader, write_tb=False)
-        if test_dataloader is not None:
-            if hvd.rank() == 0:
-                logger.info('Runnning validation on test data:')
-            trainer.validate(test_dataloader, write_tb=False)
+        # if test_dataloader is not None:
+        #     if hvd.rank() == 0:
+        #         logger.info('Runnning validation on test data:')
+        #     trainer.validate(test_dataloader, write_tb=False)
     else:
         # run validation, do not write to tensorboard
-        if hvd.rank() == 0:
-            logger.info('Running validation on train set:')
-        trainer.validate(train_dataloader, split='train', write_tb=True)
+        # if hvd.rank() == 0:
+        #     logger.info('Running validation on train set:')
+        # trainer.validate(train_dataloader, split='train', write_tb=True)
         if valid_dataloader is not None:
             if hvd.rank() == 0:
                 logger.info('Running validation on valid data:')
@@ -429,4 +432,4 @@ if __name__ == '__main__':
         # if test_dataloader is not None:
         #     if hvd.rank() == 0:
         #         logger.info('Runnning validation on test data:')
-        #     trainer.validate(test_dataloader, write_tb=True)
+        #     trainer.validate(test_dataloader, split='test', write_tb=True)

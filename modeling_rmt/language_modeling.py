@@ -334,7 +334,7 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
             memory[non_empty_mask] = out.hidden_states[-1][:, self.write_memory_position]
 
         self.memory_state = memory
-        # return (base_model_outputs, kwargs)
+
         out = self.process_outputs(base_model_outputs, kwargs)
         return out
     
@@ -405,8 +405,12 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
         return mask
     
     def process_outputs(self, model_outputs, kwargs):
-        full_logits = torch.cat([o.logits[:, self.num_mem_tokens:-self.num_mem_tokens] for o in model_outputs], dim=1)
-        truncated_hs = [[lh[:, self.num_mem_tokens:-self.num_mem_tokens] for lh in o.hidden_states] for o in model_outputs]
+        if self.num_mem_tokens in {0, None}:
+            full_logits = torch.cat([o.logits for o in model_outputs], dim=1)
+            truncated_hs = [[lh for lh in o.hidden_states] for o in model_outputs]
+        else:    
+            full_logits = torch.cat([o.logits[:, self.num_mem_tokens:-self.num_mem_tokens] for o in model_outputs], dim=1)
+            truncated_hs = [[lh[:, self.num_mem_tokens:-self.num_mem_tokens] for lh in o.hidden_states] for o in model_outputs]
         full_hidden_states = tuple([torch.cat(layer_hs, dim=1) for layer_hs in zip(*truncated_hs)])
 
         rmt_out = CausalLMOutputWithCrossAttentions()
@@ -440,6 +444,59 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
                     rmt_out[f'{key}_{seg_num}'] = value
 
         return rmt_out 
+    
+
+class RMTDecoderXLCache(RMTDecoderLMHeadMultiSeg):
+    def set_params(self, num_mem_tokens, tokenizer, **rmt_config):
+        super().set_params(num_mem_tokens, tokenizer, **rmt_config)
+        self.override_encoder_forward(rmt_config.get('xl_forward_func'))
+        self.memory_storage = {'xl_cache': dict()}
+        if rmt_config.get('xl_cache_size'):
+            self.segment_size -= rmt_config['xl_cache_size']
+
+    def override_encoder_forward(self, xl_forward_func):
+        if xl_forward_func is None:
+            from rmt_utils.decoder.transformer_xl import xl_forward
+            xl_forward_func = xl_forward
+        new_forward = lambda *args, **kwargs: xl_forward_func(*args, **kwargs, rmt_parent=self)
+        self.model.base_model.forward = types.MethodType(new_forward, self.model.base_model)
+
+    def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
+                inputs_embeds=None, labels=None, labels_mask=None, output_attentions=None, output_hidden_states=None, return_dict=None):
+        kwargs = {'attention_mask': attention_mask, 'token_type_ids': token_type_ids,
+                  'position_ids': position_ids, 'inputs_embeds': inputs_embeds,
+                  'labels_mask': labels_mask, #'pos_weight': pos_weight,
+                  'labels': labels, 'output_attentions': output_attentions,
+                  'output_hidden_states': output_hidden_states, 'return_dict': return_dict,
+                  }
+
+        memory = self.set_memory(input_ids.shape)
+        segmented = self.pad_and_segment(input_ids, labels)
+
+        base_model_outputs = []
+        self.memory_storage['non_empty_mask'] = None
+        for seg_num, segment in enumerate(zip(*segmented)):
+
+            seg_kwargs, non_empty_mask = self.prepare_kwargs(segment, memory, kwargs)
+            if sum(non_empty_mask) == 0:
+                continue
+            
+            if self.detach_memory(seg_num):
+                memory = memory.detach()
+
+            seg_kwargs['inputs_embeds'][:, self.read_memory_position] = memory[non_empty_mask]
+            seg_kwargs['inputs_embeds'][:, self.write_memory_position] = memory[non_empty_mask]
+            out = self.model(**seg_kwargs)
+            base_model_outputs.append(out)
+            
+            self.memory_storage['non_empty_mask'] = non_empty_mask
+            memory[non_empty_mask] = out.hidden_states[-1][:, self.write_memory_position]
+
+        self.memory_state = memory
+
+        out = self.process_outputs(base_model_outputs, kwargs)
+        return out
+
 
 
 # class RMTDecoderScaleMem(RMTDecoderMemoryLayers):

@@ -10,13 +10,13 @@ MODEL_TYPE=decoder
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=500000
+ITERS=1050000
 TBS=32
-BS=8
+BS=16
 
-TGT_LEN=1024
-INPUT_SEQ_LEN=1024
-INPUT_SIZE=1024
+TGT_LEN=128
+INPUT_SEQ_LEN=128
+INPUT_SIZE=128
 
 MAX_N_SEGMENTSS=(1)
 MEMORY_SIZES=(NA)
@@ -35,7 +35,7 @@ MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]}
 for SEGMENT_ORDERING in regular
 do
 
-SCHEDULER=constant_with_warmup
+SCHEDULER=linear
 
 for LR in 5e-05
 do
@@ -59,7 +59,7 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --optimizer AdamW  --weight_decay 0.001 \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
         --data_n_workers 2 \
-        --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/10)) \
+        --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/50)) \
         --show_valid_examples 5 \
         --early_stopping_patience 15 \
         --seed $(($N+42)) \

@@ -18,22 +18,21 @@ TGT_LEN=128
 INPUT_SIZE=128
 
 MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10)
-MEMORY_SIZES=(1 1 1 1 1 1 1 1 1 1)
 BSS=(32 16 16 8 8 4 4 2 2 1 1 1)
 
-for N in 2
+for MEMORY_SIZE in 5 10
+do 
+for N in 1
 do
 
 for MODEL_NAME in gpt2
 do
 
-for (( j=0; j<${#MEMORY_SIZES[@]}; j++ ))
+for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
 do
-MEMORY_SIZE=${MEMORY_SIZES[j]}
 MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]} 
 INPUT_SEQ_LEN=$(((INPUT_SIZE-2*MEMORY_SIZE)*MAX_N_SEGMENTS))
 BS=${BSS[j]}
-K2=4
 
 for SEGMENT_ORDERING in regular
 do
@@ -44,8 +43,10 @@ do
 for LR in 1e-05
 do
 
-for SOURCE_N_SEGMENTS in 2 3 4 5 6
+for SOURCE_N_SEGMENTS in 1 2 3 4 5 6 7
 do
+
+K2=$((SOURCE_N_SEGMENTS))
 
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
@@ -55,7 +56,7 @@ horovodrun --gloo -np $NP python run_finetuning_lm_multiseg_rmt_chunked.py \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/lm_long/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}_segm_valid/run_2 \
+        --model_cpt ../runs/lm_long/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}_segm_valid/run_1 \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \
@@ -75,6 +76,7 @@ horovodrun --gloo -np $NP python run_finetuning_lm_multiseg_rmt_chunked.py \
         --seed $(($N+42)) \
         --clip_grad_value 5.0
         
+done
 done
 done
 done
