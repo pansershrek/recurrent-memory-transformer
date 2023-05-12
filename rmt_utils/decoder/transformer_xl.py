@@ -3,7 +3,7 @@ import torch
 from typing import List, Optional, Tuple, Union
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 
-def xl_memory_forward(self,
+def xl_forward(self,
         input_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.Tensor]]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
