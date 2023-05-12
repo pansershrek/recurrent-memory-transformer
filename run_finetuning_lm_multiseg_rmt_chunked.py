@@ -178,6 +178,8 @@ if __name__ == '__main__':
     block_size = args.input_size 
     if args.num_mem_tokens is not None:
         block_size -= 2 * args.num_mem_tokens
+    if args.xl_cache_size is not None:
+        block_size -= args.xl_cache_size
     history_size = args.input_seq_len - block_size
 
     def group_texts(examples, block_size, history_size=None):
