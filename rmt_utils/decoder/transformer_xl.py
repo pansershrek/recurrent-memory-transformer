@@ -112,8 +112,9 @@ def xl_memory_forward(self,
     # init xl cache
     xl_cache = rmt_parent.memory_storage['xl_cache']
     xl_cache_size = rmt_parent.rmt_config['xl_cache_size']
+
     if 0 in xl_cache and attention_mask is not None:
-        layer_attention_mask = torch.cat((attention_mask[:, :, :, :xl_cache_size], attention_mask), dim=-1)
+        layer_attention_mask = torch.cat((attention_mask[:, :, :, :xl_cache[0].shape[1]], attention_mask), dim=-1)
     else:
         layer_attention_mask = attention_mask
     for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
@@ -157,15 +158,12 @@ def xl_memory_forward(self,
                 encoder_attention_mask,
             )
         else:
-            # layer_attention_mask = attention_mask
             if i in xl_cache:
                 layer_cache = xl_cache[i]
                 non_empty_mask = rmt_parent.memory_storage['non_empty_mask']
                 if non_empty_mask is not None:
                     layer_cache = layer_cache[non_empty_mask]
                 hidden_states = torch.cat((layer_cache, hidden_states), dim=1)
-                # if attention_mask is not None:
-                #     layer_attention_mask = torch.cat((attention_mask[:, :, :, :xl_cache_size], attention_mask), dim=-1)
 
             outputs = block(
                 hidden_states,
@@ -181,10 +179,13 @@ def xl_memory_forward(self,
         hidden_states = outputs[0]
 
         if i in xl_cache:
-            hidden_states = hidden_states[:, xl_cache_size:]
+            hidden_states = hidden_states[:, xl_cache[i].shape[1]:]
 
         # update layer cache
-        xl_cache[i] = hidden_states[:, :-rmt_parent.num_mem_tokens][:, -xl_cache_size:].detach()
+        xl_cache[i] = hidden_states
+        if rmt_parent.num_mem_tokens not in {0, None}:
+            xl_cache[i] = xl_cache[i][:, :-rmt_parent.num_mem_tokens]
+        xl_cache[i] = xl_cache[i][:, -xl_cache_size:].detach()
 
         if use_cache is True:
             presents = presents + (outputs[1],)

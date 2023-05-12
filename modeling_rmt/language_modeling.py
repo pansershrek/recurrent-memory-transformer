@@ -450,7 +450,6 @@ class RMTDecoderXLCache(RMTDecoderLMHeadMultiSeg):
     def set_params(self, num_mem_tokens, tokenizer, **rmt_config):
         super().set_params(num_mem_tokens, tokenizer, **rmt_config)
         self.override_encoder_forward(rmt_config.get('xl_forward_func'))
-        self.memory_storage = {'xl_cache': dict()}
         if rmt_config.get('xl_cache_size'):
             self.segment_size -= rmt_config['xl_cache_size']
 
@@ -474,7 +473,7 @@ class RMTDecoderXLCache(RMTDecoderLMHeadMultiSeg):
         segmented = self.pad_and_segment(input_ids, labels)
 
         base_model_outputs = []
-        self.memory_storage['non_empty_mask'] = None
+        self.memory_storage = {'xl_cache': dict(), 'non_empty_mask': None}
         for seg_num, segment in enumerate(zip(*segmented)):
 
             seg_kwargs, non_empty_mask = self.prepare_kwargs(segment, memory, kwargs)
@@ -496,7 +495,6 @@ class RMTDecoderXLCache(RMTDecoderLMHeadMultiSeg):
 
         out = self.process_outputs(base_model_outputs, kwargs)
         return out
-
 
 
 # class RMTDecoderScaleMem(RMTDecoderMemoryLayers):
