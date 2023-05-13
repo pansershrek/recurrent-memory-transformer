@@ -87,6 +87,7 @@ parser.add_argument('--input_size', type=int, default=None, help='maximal input 
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--xl_cache_size', type=int, default=None, help='size of Transformer-XL -like cache')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
+parser.add_argument('--noise_n_segments', type=int, default=1, help='number of noisy segments in history')
 parser.add_argument('--sum_loss', action='store_true', default=False,
                     help='with this flag task loss from all segments is summed')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
@@ -154,25 +155,90 @@ if __name__ == '__main__':
     # Prepare datasets
     if hvd.rank() == 0:
         logger.info(f'preparing dataset for {args.task_name}')
-    
+
     block_size = args.input_size 
     if args.num_mem_tokens is not None:
         block_size -= 2 * args.num_mem_tokens
     if args.xl_cache_size is not None:
         block_size -= args.xl_cache_size
     history_size = args.input_seq_len - block_size
+    history_n_segments = args.max_n_segments - 1 - args.noise_n_segments
 
-    class segmentDataLoaderOTF(DataLoader):
-        def __init__(self, dataset, block_size, history_size, max_samples=None, shuffle=False, *args, **kwargs):
+    # noise dataset
+
+    raw_noise_dataset = load_dataset('wikitext', 'wikitext-2-v1')
+
+    column_names = raw_noise_dataset["train"].column_names
+    text_column_name = "text" if "text" in column_names else column_names[0]
+
+    def tokenize_function(examples):
+        return tokenizer(examples[text_column_name])
+
+    noise_dataset = raw_noise_dataset.map(
+        tokenize_function,
+        batched=True,
+        remove_columns=column_names,
+        desc="Running tokenizer on dataset",
+    )
+
+    def group_texts(examples, block_size, history_size=None):
+        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+        total_length = len(concatenated_examples[list(examples.keys())[0]])
+
+        if history_size is None:
+            result = {
+                k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
+                for k, t in concatenated_examples.items()
+            }
+        else:
+            result = {
+                k: [t[max({0, i - history_size}) : i + block_size] for i in range(0, total_length, block_size)]
+                for k, t in concatenated_examples.items()
+            }
+        result["labels"] = result["input_ids"].copy()
+        return result
+
+    id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    def collate_fn_noise(batch):
+        input_ids = [torch.tensor(b['input_ids'][::-1]) for b in batch]
+        labels = [torch.tensor(b['labels'][::-1]) for b in batch]
+        attention_mask = [torch.tensor(b['attention_mask'][::-1]) for b in batch]
+        input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T.flip(1)
+        labels = pad_sequence(labels, padding_value=-100).T.flip(1)
+        attention_mask = pad_sequence(attention_mask, padding_value=0).T.flip(1)
+
+        collated = {'input_ids': input_ids,
+                    'labels': labels, 
+                    'attention_mask': attention_mask}
+        
+        if input_ids.shape[1] != block_size:
+            labels_mask = torch.ones_like(input_ids, dtype=bool)
+            labels_mask[:, :-block_size] = False
+            collated['labels_mask'] = labels_mask
+        
+        return collated
+
+
+    train_noise_dataset = noise_dataset["train"].map(lambda x: group_texts(x, block_size), 
+                                            batched=True, desc=f"Grouping train noise in chunks of {block_size}")
+    valid_noise_dataset = noise_dataset["validation"].map(lambda x: group_texts(x, block_size), 
+                                            batched=True, desc=f"Grouping valid noise in chunks of {block_size}")
+
+
+    class segmentDataLoaderOTF_noise(DataLoader):
+        def __init__(self, dataset, noise_dataset, block_size, history_n_segments, noise_n_segments, max_samples=None, shuffle=False, *args, **kwargs):
             super().__init__(dataset, *args, **kwargs)
             self.block_size = block_size
-            self.history_size = history_size
+            self.history_n_segments = history_n_segments
+            self.noise_n_segments = noise_n_segments
             self.max_samples = max_samples
             self.shuffle = shuffle
-                
+            self.noise_dataset = noise_dataset
+        
         def get_samples(self, document):
             input_ids, attention_mask = document['input_ids'], document['attention_mask']
-            samples = [input_ids[max({0, start - self.history_size}): start + self.block_size] for start in range(0, len(input_ids), self.block_size)]
+            samples = [input_ids[start: start + self.block_size] for start in range(0, len(input_ids), self.block_size)]
+            samples = [samples[max({0, i - self.history_n_segments}):i+1] for i in range(len(samples))]
             return samples
         
         def __iter__(self):
@@ -195,6 +261,14 @@ if __name__ == '__main__':
                         document = self.dataset[inds[doc_ind]]
                         doc_ind += 1
                         samples += self.get_samples(document)
+                        # print(len(samples))
+
+                        for sample in samples:
+                            noise_positions = np.random.choice(range(len(sample)), self.noise_n_segments)
+                            # print(noise_positions)
+                            for p in noise_positions:
+                                noise_sample = self.noise_dataset[np.random.randint(len(self.noise_dataset))]['input_ids']
+                                sample.insert(p, noise_sample)
                         if doc_ind >= len(inds):
                             raise(StopIteration)
                 except(StopIteration):
@@ -202,12 +276,10 @@ if __name__ == '__main__':
 
                 batch, samples = samples[:self.batch_size], samples[self.batch_size:]
                 yield self.collate_fn(batch)
-            
 
-    from torch.nn.utils.rnn import pad_sequence
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     def collate_fn(batch):
-        input_ids = labels = [torch.tensor(b[::-1]) for b in batch]
+        input_ids = labels = [torch.tensor(list(chain(*b))[::-1]) for b in batch]
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T.flip(1)
         labels = pad_sequence(labels, padding_value=-100).T.flip(1)
@@ -216,7 +288,7 @@ if __name__ == '__main__':
         collated = {'input_ids': input_ids,
                     'labels': labels, 
                     'attention_mask': attention_mask}
-        
+
         if input_ids.shape[1] != block_size:
             labels_mask = torch.ones_like(input_ids, dtype=bool)
             labels_mask[:, :-block_size] = False
@@ -225,25 +297,29 @@ if __name__ == '__main__':
         return collated
 
 
-    train_dataset = load_from_disk('/cephfs/home/bulatov/bulatov/datasets/arxiv_pile/tokenized/train')
+    # train_dataset = load_from_disk('/cephfs/home/bulatov/bulatov/datasets/arxiv_pile/tokenized/train')
     valid_dataset = load_from_disk('/cephfs/home/bulatov/bulatov/datasets/arxiv_pile/tokenized/valid')
     test_dataset = load_from_disk('/cephfs/home/bulatov/bulatov/datasets/arxiv_pile/tokenized/test')
 
     
     # shuffle train data each epoch (one loop over train_dataset)
-    train_sampler = DistributedSampler(train_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=True,
-                                       drop_last=False, seed=args.seed)
+    # train_sampler = DistributedSampler(train_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=True,
+    #                                    drop_last=False, seed=args.seed)
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     global_batch_size = per_worker_batch_size * hvd.size()
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
-    if not args.validate_only:
-        train_dataloader = segmentDataLoaderOTF(train_dataset, batch_size=per_worker_batch_size, sampler=train_sampler,
-                                        block_size=block_size, 
-                                        history_size=history_size, 
-                                        shuffle=True,
-                                        collate_fn=collate_fn, **kwargs)
-    else:
-        train_dataloader = None
+    # if not args.validate_only:
+    #     train_dataloader = segmentDataLoaderOTF_noise(train_dataset, 
+    #                                     batch_size=per_worker_batch_size, 
+    #                                     noise_dataset=train_noise_dataset,
+    #                                     sampler=train_sampler,
+    #                                     block_size=block_size, 
+    #                                     history_n_segments=history_n_segments, 
+    #                                     noise_n_segments=args.noise_n_segments,
+    #                                     shuffle=True,
+    #                                     collate_fn=collate_fn, **kwargs)
+    # else:
+    #     train_dataloader = None
 
     # get validation dataset
     # max_samples = 1000 if args.validate_only else 100
@@ -252,12 +328,17 @@ if __name__ == '__main__':
     if hvd.rank() == 0:
         logger.info(f'preparing validation data')
     valid_sampler = DistributedSampler(valid_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
-    valid_dataloader = segmentDataLoaderOTF(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
+    valid_dataloader = segmentDataLoaderOTF_noise(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
+                                    noise_dataset=valid_noise_dataset,
                                     block_size=block_size, 
-                                    history_size=history_size, 
+                                    history_n_segments=history_n_segments, 
+                                    noise_n_segments=args.noise_n_segments,
                                     shuffle=False,
                                     max_samples=max_samples,
                                     collate_fn=collate_fn, drop_last=True, **kwargs)
+
+    gen = iter(valid_dataloader)
+    batch = next(gen)
     
     # # get test dataset
     # test_sampler = DistributedSampler(test_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
