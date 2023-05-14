@@ -287,7 +287,7 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
 
     def set_memory(self, input_shape):
         create_memory = self.training \
-                        or self.rmt_config.get('reinit_mem_each_fwd') \
+                        or not self.rmt_config.get('keep_memory', False) \
                         or not hasattr(self, 'memory_state') \
                         or self.rmt_config['max_n_segments'] == 1 
         if create_memory:
