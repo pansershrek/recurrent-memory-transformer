@@ -425,8 +425,16 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
             labels_mask = kwargs.get('labels_mask')
             if labels_mask is not None:
                 shift_mask = labels_mask[..., :-1].contiguous()
+
+                # print('full hiddens', full_hidden_states[0].shape)
+                # print('full logits', full_logits.shape, [o.logits.shape for o in model_outputs])
+                # print('flat_logits', flat_logits.shape)
+                # print('labels mask', kwargs['labels_mask'].shape)
+                # print('model_outputs', len(model_outputs), [m['hidden_states'][0].shape for m in model_outputs])
+
                 flat_labels = flat_labels[shift_mask.view(-1)]
                 flat_logits = flat_logits[shift_mask.view(-1)]
+                
                 
             rmt_out['loss'] = loss_fct(flat_logits, flat_labels)
 
