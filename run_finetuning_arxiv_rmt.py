@@ -283,6 +283,14 @@ if __name__ == '__main__':
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
         model = model_cls.from_pretrained(args.from_pretrained)
 
+    ## load cpt of backbone model
+    if args.backbone_cpt:
+        backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
+        cpt = torch.load(backbone_cpt, map_location='cpu')
+        model.load_state_dict(cpt['model_state_dict'])
+        if hvd.rank() == 0:
+            logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
+            
     # Aydar # Pass memory settings to pretrained model
     if args.num_mem_tokens is not None:
         if args.memory_forward_func is not None:
@@ -305,14 +313,6 @@ if __name__ == '__main__':
         rmt_cls = get_cls_by_name(args.model_cls)
         if hvd.rank() == 0:
             logger.info(f'Wrapping in: {rmt_cls}')
-        
-        ## load cpt of backbone model
-        if args.backbone_cpt:
-            backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
-            cpt = torch.load(backbone_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'])
-            if hvd.rank() == 0:
-                logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
         
         model = rmt_cls(model, **rmt_config)
 

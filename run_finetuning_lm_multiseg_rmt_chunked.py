@@ -177,12 +177,17 @@ if __name__ == '__main__':
     else:
         raise(ValueError(f"Unknown dataset {args.task_name}"))
 
-    block_size = args.input_size 
-    if args.num_mem_tokens is not None:
-        block_size -= 2 * args.num_mem_tokens
-    if args.xl_cache_size is not None:
-        block_size -= args.xl_cache_size
-    history_size = args.input_seq_len - block_size
+    if args.sliding_window:
+        block_size = args.input_size // args.max_n_segments - 2 * args.num_mem_tokens
+        history_size = args.input_size - block_size
+        # print('block_size, history_size', block_size, history_size)
+    else:        
+        block_size = args.input_size 
+        if args.num_mem_tokens is not None:
+            block_size -= 2 * args.num_mem_tokens
+        if args.xl_cache_size is not None:
+            block_size -= args.xl_cache_size
+        history_size = args.input_seq_len - block_size
 
     def group_texts(examples, block_size, history_size=None):
         concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
@@ -227,6 +232,12 @@ if __name__ == '__main__':
                 for i, lens in enumerate(input_lens):
                     labels_mask[i, max(lens - block_size, 0): lens] = True
                 collated['labels_mask'] = labels_mask
+                # from matplotlib import pyplot as plt
+                # fig = plt.figure()
+                # plt.imshow(attention_mask[0])
+                # plt.savefig('tmp.png')
+                # print("attention_mask", attention_mask[0])
+                # print("collated['labels_mask']", collated['labels_mask'])
 
             return collated
     else:
@@ -307,6 +318,14 @@ if __name__ == '__main__':
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
         model = model_cls.from_pretrained(args.from_pretrained)
 
+    ## load cpt of backbone model
+    if args.backbone_cpt:
+        backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
+        cpt = torch.load(backbone_cpt, map_location='cpu')
+        model.load_state_dict(cpt['model_state_dict'])
+        if hvd.rank() == 0:
+            logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
+            
     # Aydar # Pass memory settings to pretrained model
     if args.num_mem_tokens is not None:
         if args.memory_forward_func is not None:
@@ -329,14 +348,6 @@ if __name__ == '__main__':
         rmt_cls = get_cls_by_name(args.model_cls)
         if hvd.rank() == 0:
             logger.info(f'Wrapping in: {rmt_cls}')
-        
-        ## load cpt of backbone model
-        if args.backbone_cpt:
-            backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
-            cpt = torch.load(backbone_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'])
-            if hvd.rank() == 0:
-                logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
         
         model = rmt_cls(model, **rmt_config)
 
