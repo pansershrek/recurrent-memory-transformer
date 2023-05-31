@@ -10,13 +10,13 @@ MODEL_TYPE=decoder
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=1500000
+ITERS=100000
 TBS=32
-BS=16
+BS=8
 
-TGT_LEN=128
-INPUT_SEQ_LEN=128
-INPUT_SIZE=128
+TGT_LEN=1024
+INPUT_SEQ_LEN=1024
+INPUT_SIZE=1024
 
 MAX_N_SEGMENTSS=(1)
 MEMORY_SIZES=(NA)
@@ -48,6 +48,7 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $BACKBONE_CLS \
+        --backbone_cpt ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters150000_${SEGMENT_ORDERING}/run_1 \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \
@@ -59,7 +60,7 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --optimizer AdamW  --weight_decay 0.001 \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
         --data_n_workers 2 \
-        --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/50)) \
+        --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/10)) \
         --show_valid_examples 5 \
         --early_stopping_patience 15 \
         --seed $(($N+42)) \

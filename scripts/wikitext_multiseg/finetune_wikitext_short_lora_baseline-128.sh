@@ -7,10 +7,11 @@ CUBLAS_WORKSPACE_CONFIG=:4096:2
 CUDA_LAUNCH_BLOCKING=1
 
 MODEL_TYPE=decoder
-BACKBONE_CLS=transformers:AutoModelForCausalLM
-TASK_NAME=arxiv
+BACKBONE_CLS=modeling_gpt2:GPT2LMHeadModel
+TASK_NAME=wikitext-2-v1
+FROM_PRETRAINED=gpt2
 
-ITERS=1500000
+ITERS=10000
 TBS=32
 BS=16
 
@@ -21,7 +22,7 @@ INPUT_SIZE=128
 MAX_N_SEGMENTSS=(1)
 MEMORY_SIZES=(NA)
 
-for N in 2
+for N in 1
 do
 
 for MODEL_NAME in gpt2
@@ -37,14 +38,14 @@ do
 
 SCHEDULER=linear
 
-for LR in 5e-05
+for LR in 5e-05 1e-05
 do
 
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
-horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
+horovodrun --gloo -np $NP python run_finetuning_lm_lora_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}/run_$N \
+        --model_path ../runs/lm_long/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}_lora_freeze/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $BACKBONE_CLS \
@@ -52,14 +53,14 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \
         --target_seq_len $TGT_LEN \
-        --bptt_depth -1 \
-        --save_best \
+        --use_lora \
+        --freeze_model_weights \
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --iters $ITERS \
         --optimizer AdamW  --weight_decay 0.001 \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
         --data_n_workers 2 \
-        --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/50)) \
+        --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/10)) \
         --show_valid_examples 5 \
         --early_stopping_patience 15 \
         --seed $(($N+42)) \

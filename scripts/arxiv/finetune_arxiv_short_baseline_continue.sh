@@ -10,7 +10,7 @@ MODEL_TYPE=decoder
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=1500000
+ITERS=1000000
 TBS=32
 BS=16
 
@@ -21,7 +21,7 @@ INPUT_SIZE=128
 MAX_N_SEGMENTSS=(1)
 MEMORY_SIZES=(NA)
 
-for N in 2
+for N in 3
 do
 
 for MODEL_NAME in gpt2
@@ -37,18 +37,19 @@ do
 
 SCHEDULER=linear
 
-for LR in 5e-05
+for LR in 5e-07
 do
 
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}/run_$N \
+        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters1500000_${SEGMENT_ORDERING}_continue/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $BACKBONE_CLS \
         --backbone_cls $BACKBONE_CLS \
+        --backbone_cpt ../runs/${TASK_NAME}/gpt2/lr5e-05_linear_adamw_wd1e-03_128-128-1x128_memNA_bs32_iters1500000_regular/run_2/ \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \
         --target_seq_len $TGT_LEN \
@@ -57,7 +58,7 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --iters $ITERS \
         --optimizer AdamW  --weight_decay 0.001 \
-        --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
+        --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps 0 \
         --data_n_workers 2 \
         --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/50)) \
         --show_valid_examples 5 \

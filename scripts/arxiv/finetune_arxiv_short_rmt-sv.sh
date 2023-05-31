@@ -19,9 +19,9 @@ INPUT_SIZE=128
 
 MAX_N_SEGMENTSS=(1)
 MEMORY_SIZES=(2)
-BSS=(8)
+BSS=(16)
 
-for N in 4
+for N in 5
 do
 
 for MODEL_NAME in gpt2

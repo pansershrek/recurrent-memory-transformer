@@ -11,14 +11,14 @@ MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=150000
+ITERS=250000
 TBS=32
 
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(2 3 4 5 6 7 8 9 10 )
-BSS=(4 4 2 2 2 1 1 1 1 1)
+MAX_N_SEGMENTSS=(5 6 7 8 9 10 )
+BSS=(8 8 4 4 4)
 
 for MEMORY_SIZE in 2
 do 

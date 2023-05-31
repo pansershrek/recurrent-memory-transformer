@@ -11,19 +11,19 @@ MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=50000
+ITERS=250000
 TBS=32
 
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(2 3 4 5 6 7)
-BSS=(4 4 2 2 2 1 1)
+MAX_N_SEGMENTSS=(8 9 10)
+BSS=(8 8 8)
 
-for MEMORY_SIZE in 5
+for MEMORY_SIZE in 2
 do 
 
-for N in 1
+for N in 4
 do
 
 for MODEL_NAME in gpt2
@@ -34,7 +34,7 @@ do
 MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]} 
 INPUT_SEQ_LEN=$(((INPUT_SIZE-2*MEMORY_SIZE)*MAX_N_SEGMENTS))
 BS=${BSS[j]}
-LR=5e-05
+LR=1e-05
 
 K2=${MAX_N_SEGMENTS}
 
@@ -53,7 +53,7 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*(MAX_N_SEGMENTS-1)))-${TGT_LEN}-$((MAX_N_SEGMENTS-1))x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-$((K2-1))_from_cpt_$((MAX_N_SEGMENTS-2))-$((MAX_N_SEGMENTS-1))/run_1 \
+        --model_cpt ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*(MAX_N_SEGMENTS-1)))-${TGT_LEN}-$((MAX_N_SEGMENTS-1))x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-$((K2-1))_from_cpt_$((MAX_N_SEGMENTS-2))-$((MAX_N_SEGMENTS-1))/run_$N \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \

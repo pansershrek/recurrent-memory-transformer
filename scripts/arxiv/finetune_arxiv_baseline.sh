@@ -10,7 +10,7 @@ MODEL_TYPE=decoder
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=500000
+ITERS=150000
 TBS=32
 BS=8
 
@@ -35,7 +35,7 @@ MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]}
 for SEGMENT_ORDERING in regular
 do
 
-SCHEDULER=constant_with_warmup
+SCHEDULER=linear
 
 for LR in 5e-05
 do

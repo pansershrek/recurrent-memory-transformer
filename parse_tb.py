@@ -211,31 +211,31 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 # df.to_csv(out_path, index=False)
 
 
-#wikitext
+# #wikitext
 
-paths = [
-        '/home/bulatov/bulatov/RMT_light/runs/lm_long',
-        ]
+# paths = [
+#         '/home/jovyan/rmt/runs/lm_long',
+#         ]
 
-# path = Path('/home/bulatov/bulatov/RMT_light/runs/')
-paths = [Path(p) for p in paths]
-metric_names = ['loss']
-new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']
-target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
-out_path = 'results/wikitext-multiseg.csv'
+# # path = Path('/home/bulatov/bulatov/RMT_light/runs/')
+# paths = [Path(p) for p in paths]
+# metric_names = ['loss']
+# new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']
+# target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
+# out_path = 'results/wikitext-multiseg.csv'
 
-dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-df = pd.concat(dfs)
-df.to_csv(out_path, index=False)
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
 
 # arxiv 
 paths = [
-        '/home/bulatov/bulatov/RMT_light/runs/arxiv',
+        '/home/jovyan/rmt/runs/arxiv',
         ]
 
 paths = [Path(p) for p in paths]
 metric_names = ['loss']
-new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']
+new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
 target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
 out_path = 'results/arxiv.csv'
 
