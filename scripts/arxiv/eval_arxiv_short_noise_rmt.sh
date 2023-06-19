@@ -17,13 +17,13 @@ TBS=128
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(4 3)
-BSS=(8 8)
+MAX_N_SEGMENTSS=(5)
+BSS=(4)
 
-for NOISE_N_SEGMENTS in 1 2 3
+for NOISE_N_SEGMENTS in 1 2 3 4 5
 do 
 
-for N in 1
+for N in 4
 do
 
 for MODEL_NAME in gpt2
@@ -31,7 +31,7 @@ do
 
 for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
 do
-MEMORY_SIZE=5
+MEMORY_SIZE=2
 MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]} 
 INPUT_SEQ_LEN=$(((INPUT_SIZE-2*MEMORY_SIZE)*(MAX_N_SEGMENTS-NOISE_N_SEGMENTS)))
 BS=${BSS[j]}
@@ -56,7 +56,7 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_noise_rmt.py \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}/run_1 \
+        --model_cpt ../runs/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_620-128-5x128_mem2_bs32_regular_bptt-5_from_cpt_4-5/run_4 \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \

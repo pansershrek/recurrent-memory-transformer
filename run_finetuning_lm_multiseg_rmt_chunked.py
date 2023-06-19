@@ -232,12 +232,6 @@ if __name__ == '__main__':
                 for i, lens in enumerate(input_lens):
                     labels_mask[i, max(lens - block_size, 0): lens] = True
                 collated['labels_mask'] = labels_mask
-                # from matplotlib import pyplot as plt
-                # fig = plt.figure()
-                # plt.imshow(attention_mask[0])
-                # plt.savefig('tmp.png')
-                # print("attention_mask", attention_mask[0])
-                # print("collated['labels_mask']", collated['labels_mask'])
 
             return collated
     else:
@@ -325,7 +319,7 @@ if __name__ == '__main__':
         model.load_state_dict(cpt['model_state_dict'])
         if hvd.rank() == 0:
             logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
-            
+
     # Aydar # Pass memory settings to pretrained model
     if args.num_mem_tokens is not None:
         if args.memory_forward_func is not None:

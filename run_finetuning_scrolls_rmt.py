@@ -73,6 +73,7 @@ parser.add_argument('--model_cls', type=str, default='transformers:BertForPreTra
 parser.add_argument('--model_cpt', type=str, default=None, help='pretrained model checkpoint path')
 parser.add_argument('--backbone_cls', type=str, default=None,
                     help='backbone class name to use for RMT')
+parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
 parser.add_argument('--model_type', type=str, default='encoder-decoder',
                     help='model type, encoder, encoder-decoder, decoder, affects preprocessing '
                          '(default: encoder-decoder)')
@@ -287,12 +288,6 @@ if __name__ == '__main__':
     if args.num_mem_tokens is not None:
         if args.memory_forward_func is not None:
             args.memory_forward_func = get_cls_by_name(args.memory_forward_func)
-        #     implementation_path = os.path.dirname(args.memory_forward_implementation)
-        #     print(f'Loooking for memory_forward in {implementation_path}')
-        #     sys.path.append(implementation_path)
-        #     from memory_forward import memory_forward
-        # else:
-        #     memory_forward = None
 
         rmt_config = {
             'num_mem_tokens': args.num_mem_tokens, 
@@ -311,22 +306,23 @@ if __name__ == '__main__':
         if hvd.rank() == 0:
             logger.info(f'Wrapping in: {rmt_cls}')
         
-        ## load cpt
+        ## load cpt of backbone model
+        if args.backbone_cpt:
+            backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
+            cpt = torch.load(backbone_cpt, map_location='cpu')
+            model.load_state_dict(cpt['model_state_dict'])
+            if hvd.rank() == 0:
+                logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
+
+        model = rmt_cls(model, **rmt_config)
+
+        ## load cpt of rmt
         if args.model_cpt:
             model_cpt = os.path.join(args.model_cpt, "model_best.pth")
             cpt = torch.load(model_cpt, map_location='cpu')
-            # model.load_state_dict(cpt['model_state_dict'])
-            drop_keys = { "cls_token", "sep_token", "mem_token_ids", "embeddings.weight"}
-            fixed_state_dict = {}
-            for key, value in cpt['model_state_dict'].items():
-                if 'model' in key:
-                    key = key.split('model.')[1]
-                if key not in drop_keys:
-                    fixed_state_dict[key] = value
+            model.load_state_dict(cpt['model_state_dict'])
             if hvd.rank() == 0:
                 logger.info(f'Loaded state dict from: {args.model_cpt}')
-        
-        model = rmt_cls(model, **rmt_config)
     
     # define optimizer
     optimizer_cls = get_optimizer(args.optimizer)

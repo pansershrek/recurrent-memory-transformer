@@ -3,7 +3,6 @@ import logging
 import sys
 import os
 import math
-import random
 import shutil
 from pathlib import Path
 from itertools import chain
@@ -15,7 +14,7 @@ import torch
 import numpy as np
 import datasets
 from torch.utils.data import DataLoader, DistributedSampler
-from datasets import Dataset, load_dataset, load_from_disk
+from datasets import Dataset, load_dataset
 from huggingface_hub import hf_hub_download
 from sklearn.metrics import f1_score, accuracy_score
 
@@ -24,6 +23,7 @@ from lm_experiments_tools.trainer import Trainer
 
 from torch.nn.utils.rnn import pad_sequence
 from lm_experiments_tools.lm_datasets import get_lm_datasets
+
 load_dotenv()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -68,6 +68,8 @@ parser.add_argument('--target_seq_len', type=int, default=16, help='target sequn
 parser.add_argument('--data_n_workers', type=int, default=2, help='number of dataloader workers (default: 2)')
 
 parser.add_argument('--input_prefix', type=str, default='', help='add task prefix to an input string (default: "")')
+parser.add_argument('--sliding_window', action='store_true', help='use slinding window attentinon mask, '
+                    'eval on last segment only', default=False)
 
 # model args
 parser.add_argument('--from_pretrained', type=str, help='model name in HF Model Hub (default: "")')
@@ -87,7 +89,6 @@ parser.add_argument('--input_size', type=int, default=None, help='maximal input 
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--xl_cache_size', type=int, default=None, help='size of Transformer-XL -like cache')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
-parser.add_argument('--noise_n_segments', type=int, default=1, help='number of noisy segments in history')
 parser.add_argument('--sum_loss', action='store_true', default=False,
                     help='with this flag task loss from all segments is summed')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
@@ -108,6 +109,12 @@ parser.add_argument('--k2', type=int, default=-1, help='number of last segments 
 parser.add_argument('--freeze_model_weights', action='store_true', default=False,
                     help='Stop training all model weights except memory layers')
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
+
+# LoRA args
+parser.add_argument('--use_lora', action='store_true', default=False, help='')
+parser.add_argument('--lora_attn_dim', type=int, default=8, help='')
+parser.add_argument('--lora_attn_alpha', type=int, default=32, help='')
+parser.add_argument('--lora_dropout', type=int, default=0.1, help='')
 
 
 # tokenizer
@@ -155,31 +162,38 @@ if __name__ == '__main__':
     # Prepare datasets
     if hvd.rank() == 0:
         logger.info(f'preparing dataset for {args.task_name}')
+    
+    if 'wikitext' in args.task_name:
+        raw_datasets = datasets.load_dataset('wikitext', args.task_name)
+        column_names = raw_datasets["train"].column_names
+        text_column_name = "text" if "text" in column_names else column_names[0]
 
-    block_size = args.input_size 
-    if args.num_mem_tokens is not None:
-        block_size -= 2 * args.num_mem_tokens
-    if args.xl_cache_size is not None:
-        block_size -= args.xl_cache_size
-    history_size = args.input_seq_len - block_size
-    history_n_segments = args.max_n_segments - 1 - args.noise_n_segments
+        def tokenize_function(examples):
+            return tokenizer(examples[text_column_name])
 
-    # noise dataset
+        tokenized_datasets = raw_datasets.map(
+            tokenize_function,
+            batched=True,
+            remove_columns=column_names,
+            desc="Running tokenizer on dataset",
+        )
+    elif 'arxiv' in args.task_name:
+        # from datasets import load_from_disk
+        tokenized_datasets = datasets.load_from_disk('/home/bulatov/bulatov/datasets/arxiv_pile/processed/')
+    else:
+        raise(ValueError(f"Unknown dataset {args.task_name}"))
 
-    raw_noise_dataset = load_dataset('wikitext', 'wikitext-2-v1')
-
-    column_names = raw_noise_dataset["train"].column_names
-    text_column_name = "text" if "text" in column_names else column_names[0]
-
-    def tokenize_function(examples):
-        return tokenizer(examples[text_column_name])
-
-    noise_dataset = raw_noise_dataset.map(
-        tokenize_function,
-        batched=True,
-        remove_columns=column_names,
-        desc="Running tokenizer on dataset",
-    )
+    if args.sliding_window:
+        block_size = args.input_size // args.max_n_segments - 2 * args.num_mem_tokens
+        history_size = args.input_size - block_size
+        # print('block_size, history_size', block_size, history_size)
+    else:        
+        block_size = args.input_size 
+        if args.num_mem_tokens is not None:
+            block_size -= 2 * args.num_mem_tokens
+        if args.xl_cache_size is not None:
+            block_size -= args.xl_cache_size
+        history_size = args.input_seq_len - block_size
 
     def group_texts(examples, block_size, history_size=None):
         concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
@@ -187,133 +201,70 @@ if __name__ == '__main__':
 
         if history_size is None:
             result = {
-                k: [t[i : i + block_size] for i in range(0, total_length-block_size, block_size)]
+                k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
                 for k, t in concatenated_examples.items()
             }
         else:
             result = {
-                k: [t[max({0, i - history_size}) : i + block_size] for i in range(0, total_length-block_size, block_size)]
+                k: [t[max({0, i - history_size}) : i + block_size] for i in range(0, total_length, block_size)]
                 for k, t in concatenated_examples.items()
             }
         result["labels"] = result["input_ids"].copy()
         return result
 
-    # id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-    # def collate_fn_noise(batch):
-    #     input_ids = [torch.tensor(b['input_ids'][::-1]) for b in batch]
-    #     labels = [torch.tensor(b['labels'][::-1]) for b in batch]
-    #     attention_mask = [torch.tensor(b['attention_mask'][::-1]) for b in batch]
-    #     input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T.flip(1)
-    #     labels = pad_sequence(labels, padding_value=-100).T.flip(1)
-    #     attention_mask = pad_sequence(attention_mask, padding_value=0).T.flip(1)
-
-    #     collated = {'input_ids': input_ids,
-    #                 'labels': labels, 
-    #                 'attention_mask': attention_mask}
-        
-    #     if input_ids.shape[1] != block_size:
-    #         labels_mask = torch.ones_like(input_ids, dtype=bool)
-    #         labels_mask[:, :-block_size] = False
-    #         collated['labels_mask'] = labels_mask
-        
-    #     print('\n\n\nnoise')
-    #     for key in collated:
-    #         print(key, collated[key].shape)
-    #     return collated
-
-
-    train_noise_dataset = noise_dataset["train"].map(lambda x: group_texts(x, block_size), 
-                                            batched=True, desc=f"Grouping train noise in chunks of {block_size}")
-    valid_noise_dataset = noise_dataset["validation"].map(lambda x: group_texts(x, block_size), 
-                                            batched=True, desc=f"Grouping valid noise in chunks of {block_size}")
-
-
-    class segmentDataLoaderOTF_noise(DataLoader):
-        def __init__(self, dataset, noise_dataset, block_size, history_n_segments, noise_n_segments, max_samples=None, shuffle=False, *args, **kwargs):
-            super().__init__(dataset, *args, **kwargs)
-            self.block_size = block_size
-            self.history_n_segments = history_n_segments
-            self.noise_n_segments = noise_n_segments
-            self.max_samples = max_samples
-            self.shuffle = shuffle
-            self.noise_dataset = noise_dataset
-        
-        def get_samples(self, document):
-            input_ids, attention_mask = document['input_ids'], document['attention_mask']
-            samples = [input_ids[start: start + self.block_size] for start in range(0, len(input_ids), self.block_size)]
-            samples = [samples[max({0, i - self.history_n_segments - 1}):i] for i in range(1, len(samples))]
-
-            for sample in samples:
-                noise_positions = np.random.choice(range(len(sample)), self.noise_n_segments)
-                # print('noise_positions', noise_positions)
-                for p in noise_positions:
-                    noise_sample = self.noise_dataset[np.random.randint(len(self.noise_dataset))]['input_ids']
-                    sample.insert(p, noise_sample)
-
-            return samples
-        
-        def __iter__(self):
-            inds = list(range(len(self.dataset)))
-
-            if self.max_samples is not None:
-                inds = inds[:self.max_samples]
-
-            if self.shuffle: 
-                random.shuffle(inds)
-
-            doc_ind = 0
-            samples = []
-
-            while True:
-                if doc_ind >= len(inds):
-                    break
-                try: 
-                    while len(samples) < self.batch_size:
-                        document = self.dataset[inds[doc_ind]]
-                        doc_ind += 1
-                        samples += self.get_samples(document)
-
-                        if doc_ind >= len(inds):
-                            raise(StopIteration)
-                except(StopIteration):
-                    pass
-
-                batch, samples = samples[:self.batch_size], samples[self.batch_size:]
-                yield self.collate_fn(batch)
-
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-    def collate_fn(batch):
-        input_ids = labels = [torch.tensor(list(chain(*b))[::-1]) for b in batch]
-        attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
-        input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T.flip(1)
-        labels = pad_sequence(labels, padding_value=-100).T.flip(1)
-        attention_mask = pad_sequence(attention_mask, padding_value=0).T.flip(1)
+    if args.sliding_window:
+        def collate_fn(batch):
+            input_ids = [torch.tensor(b['input_ids']) for b in batch]
+            input_lens = [el.shape[-1] for el in input_ids]
 
-        collated = {'input_ids': input_ids,
-                    'labels': labels, 
-                    'attention_mask': attention_mask}
+            labels = [torch.tensor(b['labels']) for b in batch]
+            attention_mask = [torch.tensor(b['attention_mask']) for b in batch]
+            input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T
+            labels = pad_sequence(labels, padding_value=-100).T
+            attention_mask = pad_sequence(attention_mask, padding_value=0).T
 
-        if input_ids.shape[1] != block_size:
-            labels_mask = torch.ones_like(input_ids, dtype=bool)
-            labels_mask[:, :-block_size] = False
-            collated['labels_mask'] = labels_mask
+            # make sliding window att mask
+            attention_mask = attention_mask[:, None, :].repeat(1, attention_mask.shape[1], 1)
+            attention_mask = (torch.tril(attention_mask, 0) * (1 - torch.tril(attention_mask, -block_size)))
 
-        # print('\n\n\ndata')
-        # for key in collated:
-        #     print(key, collated[key].shape)
-        
-        # if collated['labels_mask'].shape[1] != 472:
-        #     print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nlen(batch), [len(b) for b in batch]', len(batch), [len(b) for b in batch])
-        # else:
-        #     print('len(batch), [len(b) for b in batch]', len(batch), [len(b) for b in batch])
+            collated = {'input_ids': input_ids,
+                        'labels': labels, 
+                        'attention_mask': attention_mask}
 
-        
-        return collated
+            if input_ids.shape[1] != block_size:
+                # take only labels for last block (maybe use all labels during training?)
+                labels_mask = torch.zeros_like(input_ids, dtype=torch.bool)
+                for i, lens in enumerate(input_lens):
+                    labels_mask[i, max(lens - block_size, 0): lens] = True
+                collated['labels_mask'] = labels_mask
+
+            return collated
+    else:
+        def collate_fn(batch):
+            input_ids = [torch.tensor(b['input_ids'][::-1]) for b in batch]
+            labels = [torch.tensor(b['labels'][::-1]) for b in batch]
+            attention_mask = [torch.tensor(b['attention_mask'][::-1]) for b in batch]
+            input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T.flip(1)
+            labels = pad_sequence(labels, padding_value=-100).T.flip(1)
+            attention_mask = pad_sequence(attention_mask, padding_value=0).T.flip(1)
+
+            collated = {'input_ids': input_ids,
+                        'labels': labels, 
+                        'attention_mask': attention_mask}
+
+            if input_ids.shape[1] != block_size:
+                labels_mask = torch.ones_like(input_ids, dtype=bool)
+                labels_mask[:, :-block_size] = False
+                collated['labels_mask'] = labels_mask
+
+            return collated
 
 
-    train_dataset = load_from_disk('/data/tmp/bulatov_datasets/arxiv_tokenized/train')
-    valid_dataset = load_from_disk('/data/tmp/bulatov_datasets/arxiv_tokenized/valid')
-    test_dataset = load_from_disk('/data/tmp/bulatov_datasets/arxiv_tokenized/test')
+    train_dataset = tokenized_datasets["train"].map(lambda x: group_texts(x, block_size, history_size), 
+                                            batched=True, desc=f"Grouping train in chunks of {block_size} and history {history_size}")
+    valid_dataset = tokenized_datasets["validation"].map(lambda x: group_texts(x, block_size, history_size), 
+                                            batched=True, desc=f"Grouping valid in chunks of {block_size} and history {history_size}")
 
     
     # shuffle train data each epoch (one loop over train_dataset)
@@ -322,43 +273,35 @@ if __name__ == '__main__':
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     global_batch_size = per_worker_batch_size * hvd.size()
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
-    if not args.validate_only:
-        train_dataloader = segmentDataLoaderOTF_noise(train_dataset, 
-                                        batch_size=per_worker_batch_size, 
-                                        noise_dataset=train_noise_dataset,
-                                        sampler=train_sampler,
-                                        block_size=block_size, 
-                                        history_n_segments=history_n_segments, 
-                                        noise_n_segments=args.noise_n_segments,
-                                        shuffle=True,
-                                        collate_fn=collate_fn, **kwargs)
-    else:
-        train_dataloader = None
+    train_dataloader = DataLoader(train_dataset, batch_size=per_worker_batch_size, sampler=train_sampler,
+                                  collate_fn=collate_fn, **kwargs)
+    
+    
+    # dataloader for validation
+    # batch sample i is a continuation of sample i of the previous batch
+    class alignedDataLoader(DataLoader):
+        def __iter__(self):
+            all_inds = np.arange(len(self.dataset) // self.batch_size * self.batch_size)
+            all_inds = all_inds.reshape(self.batch_size, -1)
+            for batch_ind in range(all_inds.shape[1]):
+                batch = [self.dataset[int(ind)] for ind in all_inds[:, batch_ind]]
+                yield self.collate_fn(batch)
 
     # get validation dataset
-    # max_samples = 1000 if args.validate_only else 100
-    max_samples = 100
     valid_dataloader = None
     if hvd.rank() == 0:
-        logger.info(f'preparing validation data')
+        logger.info(f'preparing validation data from babilong')
     valid_sampler = DistributedSampler(valid_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
-    valid_dataloader = segmentDataLoaderOTF_noise(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
-                                    noise_dataset=valid_noise_dataset,
-                                    block_size=block_size, 
-                                    history_n_segments=history_n_segments, 
-                                    noise_n_segments=args.noise_n_segments,
-                                    shuffle=False,
-                                    max_samples=max_samples,
-                                    collate_fn=collate_fn, drop_last=True, **kwargs)
+    valid_dataloader = alignedDataLoader(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
+                                  collate_fn=collate_fn, drop_last=True, **kwargs)
     
-    # # get test dataset
-    # test_sampler = DistributedSampler(test_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
-    # test_dataloader = segmentDataLoaderOTF(test_dataset, batch_size=per_worker_batch_size, sampler=test_sampler,
-    #                                 block_size=block_size, 
-    #                                 history_size=history_size, 
-    #                                 shuffle=False,
-    #                                 max_samples=max_samples,
-    #                                 collate_fn=collate_fn, drop_last=True, **kwargs)
+    # get test dataset
+    if 'test' in tokenized_datasets.keys():
+        test_dataset = tokenized_datasets["test"].map(lambda x: group_texts(x, block_size, history_size), 
+                                            batched=True, desc=f"Grouping test in chunks of {block_size} and history {history_size}")
+        test_sampler = DistributedSampler(test_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
+        test_dataloader = DataLoader(test_dataset, batch_size=per_worker_batch_size, sampler=test_sampler,
+                                    collate_fn=collate_fn, drop_last=True, **kwargs)
     
     if args.valid_interval is None:
         args.valid_interval = args.log_interval
@@ -367,13 +310,37 @@ if __name__ == '__main__':
     model_cls = get_cls_by_name(args.backbone_cls)
     if hvd.rank() == 0:
         logger.info(f'Using model class: {model_cls}')
-    if not args.from_pretrained:
-        model_cfg = AutoConfig.from_pretrained(args.model_cfg)
+    if args.use_lora:
+        model_cfg = AutoConfig.from_pretrained(args.from_pretrained)
+        model_cfg.use_lora = args.use_lora
+        model_cfg.lora_attn_dim = args.lora_attn_dim
+        model_cfg.lora_attn_alpha = args.lora_attn_alpha
+        model_cfg.lora_dropout = args.lora_dropout
+
         model = model_cls(config=model_cfg)
-    else:
         if hvd.rank() == 0:
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
-        model = model_cls.from_pretrained(args.from_pretrained)
+        base_model = model_cls.from_pretrained(args.from_pretrained)
+        # state_dict = {k:v.contiguous() for k, v in base_model.state_dict().items()}
+        model.load_state_dict(base_model.state_dict(), strict=False)
+        # for p in model.parameters():
+        #     p = p.contiguous()
+    else:
+        if not args.from_pretrained:
+            model_cfg = AutoConfig.from_pretrained(args.model_cfg)
+            model = model_cls(config=model_cfg)
+        else:
+            if hvd.rank() == 0:
+                logger.info(f'Loading pretrained model: {args.from_pretrained}')
+            model = model_cls.from_pretrained(args.from_pretrained)
+
+    ## load cpt of backbone model
+    if args.backbone_cpt:
+        backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
+        cpt = torch.load(backbone_cpt, map_location='cpu')
+        model.load_state_dict(cpt['model_state_dict'], strict=False)
+        if hvd.rank() == 0:
+            logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
 
     # Aydar # Pass memory settings to pretrained model
     if args.num_mem_tokens is not None:
@@ -382,8 +349,8 @@ if __name__ == '__main__':
 
         rmt_config = {
             'num_mem_tokens': args.num_mem_tokens, 
-            'max_n_segments': args.max_n_segments,
             'xl_cache_size': args.xl_cache_size,
+            'max_n_segments': args.max_n_segments,
             # 'segment_ordering': args.segment_ordering,
             'input_size': args.input_size,
             'k1': args.k1, 'k2': args.k2,
@@ -398,36 +365,35 @@ if __name__ == '__main__':
         if hvd.rank() == 0:
             logger.info(f'Wrapping in: {rmt_cls}')
         
-        ## load cpt of backbone model
-        if args.backbone_cpt:
-            backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
-            cpt = torch.load(backbone_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'])
-            if hvd.rank() == 0:
-                logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
-        
         model = rmt_cls(model, **rmt_config)
 
         ## turn on memory resetting on validation
-        model.rmt_config['reinit_mem_each_fwd'] = True
+        model.rmt_config['keep_memory'] = False
+        # model.rmt_config['keep_memory'] = args.keep_memory
 
         ## load cpt of rmt
         if args.model_cpt:
             model_cpt = os.path.join(args.model_cpt, "model_best.pth")
             cpt = torch.load(model_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'])
+            model.load_state_dict(cpt['model_state_dict'], strict=False)
             if hvd.rank() == 0:
                 logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
 
-        if args.freeze_model_weights:
-            for n, p in model.named_parameters():
-                # if 'memory' not in n and 'wte' not in n:
-                if 'memory' not in n:
-                    p.requires_grad = False
-            if hvd.rank() == 0:
-                logger.info(f'Frozen moodel weights')
-                logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
+    if args.freeze_model_weights:
+        for n, p in model.named_parameters():
+            # if 'memory' not in n and 'wte' not in n:
+            if 'memory' not in n and 'lora' not in n:
+                p.requires_grad = False
+        if hvd.rank() == 0:
+            logger.info(f'Frozen moodel weights')
+            logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
 
+    # fix the not-contiguous error
+    def make_contiguous(module):
+        with torch.no_grad():
+            for param in module.parameters():
+                param.set_(param.contiguous())
+    make_contiguous(model)
     
     # define optimizer
     optimizer_cls = get_optimizer(args.optimizer)
@@ -512,15 +478,15 @@ if __name__ == '__main__':
             if hvd.rank() == 0:
                 logger.info('Runnning validation on valid data:')
             trainer.validate(valid_dataloader, write_tb=False)
-        # if test_dataloader is not None:
-        #     if hvd.rank() == 0:
-        #         logger.info('Runnning validation on test data:')
-        #     trainer.validate(test_dataloader, write_tb=False)
+        if test_dataloader is not None:
+            if hvd.rank() == 0:
+                logger.info('Runnning validation on test data:')
+            trainer.validate(test_dataloader, write_tb=False)
     else:
         # run validation, do not write to tensorboard
-        # if hvd.rank() == 0:
-        #     logger.info('Running validation on train set:')
-        # trainer.validate(train_dataloader, split='train', write_tb=True)
+        if hvd.rank() == 0:
+            logger.info('Running validation on train set:')
+        trainer.validate(train_dataloader, split='train', write_tb=True)
         if valid_dataloader is not None:
             if hvd.rank() == 0:
                 logger.info('Running validation on valid data:')
@@ -528,4 +494,4 @@ if __name__ == '__main__':
         # if test_dataloader is not None:
         #     if hvd.rank() == 0:
         #         logger.info('Runnning validation on test data:')
-        #     trainer.validate(test_dataloader, split='test', write_tb=True)
+        #     trainer.validate(test_dataloader, write_tb=True)

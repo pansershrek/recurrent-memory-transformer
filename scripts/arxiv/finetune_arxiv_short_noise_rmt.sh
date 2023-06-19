@@ -11,7 +11,7 @@ MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=150000
+ITERS=10000
 TBS=32
 
 TGT_LEN=128
@@ -25,7 +25,7 @@ NOISE_N_SEGMENTS=2
 for MEMORY_SIZE in 5
 do 
 
-for N in 1
+for N in 2
 do
 
 for MODEL_NAME in gpt2
@@ -56,7 +56,7 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_noise_rmt.py \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}/run_$N \
+        --model_cpt ../runs/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}/run_1 \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \
