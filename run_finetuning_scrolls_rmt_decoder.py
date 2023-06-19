@@ -2,22 +2,27 @@ import json
 import logging
 import sys
 import os
+import math
 import shutil
 from pathlib import Path
-
+from itertools import chain
 from megatron.data.dataset_utils import get_indexed_dataset_
 
 import horovod.torch as hvd
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import torch
 import numpy as np
-from torch.utils.data import DataLoader, DistributedSampler
 import datasets
+from torch.utils.data import DataLoader, DistributedSampler
+from datasets import Dataset, load_dataset
 from huggingface_hub import hf_hub_download
 from sklearn.metrics import f1_score, accuracy_score
 
-from lm_experiments_tools import Trainer, TrainerArgs
+from lm_experiments_tools import TrainerArgs
+from lm_experiments_tools.trainer import Trainer
 
+from torch.nn.utils.rnn import pad_sequence
+from lm_experiments_tools.lm_datasets import get_lm_datasets
 
 load_dotenv()
 
@@ -49,8 +54,7 @@ torch.set_num_threads(4)
 torch.cuda.set_device(hvd.local_rank())
 
 parser = HfArgumentParser(TrainerArgs)
-parser.add_argument('--task_name', type=str, help='Scrolls task name: "gov_report", "summ_screen_fd", "qmsum", '
-                                                  '"narrative_qa", "qasper", "quality", "contract_nli"')
+parser.add_argument('--task_name', type=str, help="Task name, wikitext, ...")
 parser.add_argument('--validate_only', action='store_true', default=False,
                     help='Skip training and run only validation. (default: False)')
 parser.add_argument('--working_dir', type=str, default='.',
@@ -64,6 +68,8 @@ parser.add_argument('--target_seq_len', type=int, default=16, help='target sequn
 parser.add_argument('--data_n_workers', type=int, default=2, help='number of dataloader workers (default: 2)')
 
 parser.add_argument('--input_prefix', type=str, default='', help='add task prefix to an input string (default: "")')
+parser.add_argument('--sliding_window', action='store_true', help='use slinding window attentinon mask, '
+                    'eval on last segment only', default=False)
 
 # model args
 parser.add_argument('--from_pretrained', type=str, help='model name in HF Model Hub (default: "")')
@@ -73,7 +79,6 @@ parser.add_argument('--model_cls', type=str, default='transformers:BertForPreTra
 parser.add_argument('--model_cpt', type=str, default=None, help='pretrained model checkpoint path')
 parser.add_argument('--backbone_cls', type=str, default=None,
                     help='backbone class name to use for RMT')
-parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
 parser.add_argument('--model_type', type=str, default='encoder-decoder',
                     help='model type, encoder, encoder-decoder, decoder, affects preprocessing '
                          '(default: encoder-decoder)')
@@ -82,6 +87,7 @@ parser.add_argument('--model_type', type=str, default='encoder-decoder',
 # Aydar # RMT args 
 parser.add_argument('--input_size', type=int, default=None, help='maximal input size of the backbone model')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
+parser.add_argument('--xl_cache_size', type=int, default=None, help='size of Transformer-XL -like cache')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
 parser.add_argument('--sum_loss', action='store_true', default=False,
                     help='with this flag task loss from all segments is summed')
@@ -95,6 +101,14 @@ parser.add_argument('--reconstruction_loss_coef', type=float, default=None,
                     help='reconstuction loss ratio in total loss')
 # parser.add_argument('--segment_ordering', type=str,help='????', default='regular',
 #                     choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
+parser.add_argument('--retain_graph', action='store_true', help='Retain computation graph during backward pass', default=False)
+parser.add_argument('--use_truncated_backward', action='store_true', default=False,
+                    help='whether to use RMT truncated bptt method in backward')
+parser.add_argument('--k1', type=int, default=-1, help='(not implemented) If not -1, gradient update is done each k1 segments')
+parser.add_argument('--k2', type=int, default=-1, help='number of last segments used by backward')
+parser.add_argument('--freeze_model_weights', action='store_true', default=False,
+                    help='Stop training all model weights except memory layers')
+parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
 
 
 # tokenizer
@@ -237,6 +251,34 @@ if __name__ == '__main__':
             features['labels'] = torch.from_numpy(labels)
             return features
 
+    elif args.model_type == 'decoder':
+        from torch.nn.utils.rnn import pad_sequence
+
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.add_tokens('[GEN]', special_tokens=True)
+        gen_token = tokenizer.encode('[GEN]')[0]
+
+        def collate_fn(batch):
+            inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
+            labels = [b['output'][:args.input_seq_len * 10] for b in batch]
+
+            collated = {}
+            inputs = tokenizer.batch_encode_plus(list(inputs), padding=False)
+            labels = tokenizer.batch_encode_plus(list(labels), padding=False)
+
+            full_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 1] + [gen_token] + l) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
+            full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
+            
+            labels_mask = torch.zeros_like(full_inputs).bool()
+            for i, l in enumerate(labels['input_ids']):
+                labels_mask[i, -len(l) -1:] = True
+
+            collated['input_ids'] = collated['labels'] = full_inputs
+            collated['labels_mask'] = labels_mask
+            collated['attention_mask'] = collated['input_ids'] != tokenizer.pad_token_id
+
+            return collated
+            
     else:
         raise NotImplementedError('only encoder-decoder models are supported for scrolls datasets or '
                                   'encoder models only for contract_nli task')
@@ -285,6 +327,7 @@ if __name__ == '__main__':
             model = model_cls.from_pretrained(args.from_pretrained, num_labels=num_labels)
 
     # Aydar # Pass memory settings to pretrained model
+    model.resize_token_embeddings(len(tokenizer))
     if args.num_mem_tokens is not None:
         if args.memory_forward_func is not None:
             args.memory_forward_func = get_cls_by_name(args.memory_forward_func)
@@ -294,7 +337,7 @@ if __name__ == '__main__':
             'max_n_segments': args.max_n_segments,
             # 'segment_ordering': args.segment_ordering,
             'input_size': args.input_size,
-            'bptt_depth': args.bptt_depth, 
+            'k1': args.k1, 'k2': args.k2,
             'sum_loss': args.sum_loss,
             'tokenizer': tokenizer,
             'memory_forward_func': args.memory_forward_func,
@@ -306,15 +349,11 @@ if __name__ == '__main__':
         if hvd.rank() == 0:
             logger.info(f'Wrapping in: {rmt_cls}')
         
-        ## load cpt of backbone model
-        if args.backbone_cpt:
-            backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
-            cpt = torch.load(backbone_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'])
-            if hvd.rank() == 0:
-                logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
-
         model = rmt_cls(model, **rmt_config)
+
+        ## turn on memory resetting on validation
+        model.rmt_config['keep_memory'] = False
+        # model.rmt_config['keep_memory'] = args.keep_memory
 
         ## load cpt of rmt
         if args.model_cpt:
@@ -322,7 +361,17 @@ if __name__ == '__main__':
             cpt = torch.load(model_cpt, map_location='cpu')
             model.load_state_dict(cpt['model_state_dict'])
             if hvd.rank() == 0:
-                logger.info(f'Loaded state dict from: {args.model_cpt}')
+                logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
+
+        if args.freeze_model_weights:
+            for n, p in model.named_parameters():
+                # if 'memory' not in n and 'wte' not in n:
+                if 'memory' not in n:
+                    p.requires_grad = False
+            if hvd.rank() == 0:
+                logger.info(f'Frozen moodel weights')
+                logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
+
     
     # define optimizer
     optimizer_cls = get_optimizer(args.optimizer)
@@ -372,13 +421,13 @@ if __name__ == '__main__':
     #   - implemented currently
     # - compute metrics on batch lvl
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
-    scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
+    # scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
 
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
         metrics = {}
         y, p = None, None
-        if args.model_type == 'encoder-decoder' and 'generation_outputs' in data:
+        if 'generation_outputs' in data:
             # replace -100 with pad token in labels
             y = data['labels']
             p = tokenizer.batch_decode(data['generation_outputs'], skip_special_tokens=True)
@@ -392,16 +441,6 @@ if __name__ == '__main__':
         elif args.model_type == 'encoder':
             y, p = data['labels'], data['predictions']
 
-        if y is not None and p is not None:
-            if args.model_type == 'encoder-decoder':
-                if not isinstance(y[0], list):
-                    y = [[_y] for _y in y]
-                result = scrolls_metric.compute(predictions=p, references=y)
-                for metric_name in task_to_metric[args.task_name]:
-                    metrics[metric_name] = result[metric_name]
-            elif args.model_type == 'encoder' and args.task_name == 'contract_nli':
-                metrics['exact_match'] = accuracy_score(y, p) * 100
-                metrics['f1_micro'] = f1_score(y, p, average='micro')
         return metrics
 
     ### booydar
@@ -410,7 +449,7 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs=generate_kwargs if args.use_generate_on_valid else {})
+                      generate_kwargs={})
 
     if not args.validate_only:
         # train loop
@@ -431,8 +470,12 @@ if __name__ == '__main__':
         # run validation, do not write to tensorboard
         if hvd.rank() == 0:
             logger.info('Running validation on train set:')
-        trainer.validate(train_dataloader, split='train', write_tb=False)
+        trainer.validate(train_dataloader, split='train', write_tb=True)
         if valid_dataloader is not None:
             if hvd.rank() == 0:
                 logger.info('Running validation on valid data:')
-            trainer.validate(valid_dataloader, write_tb=False)
+            trainer.validate(valid_dataloader, write_tb=True)
+        # if test_dataloader is not None:
+        #     if hvd.rank() == 0:
+        #         logger.info('Runnning validation on test data:')
+        #     trainer.validate(test_dataloader, write_tb=True)
