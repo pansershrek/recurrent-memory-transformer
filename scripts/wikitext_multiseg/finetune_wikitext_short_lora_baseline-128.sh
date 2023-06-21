@@ -13,7 +13,7 @@ FROM_PRETRAINED=gpt2
 
 ITERS=10000
 TBS=32
-BS=16
+BS=32
 
 TGT_LEN=128
 INPUT_SEQ_LEN=128
@@ -38,14 +38,14 @@ do
 
 SCHEDULER=linear
 
-for LR in 5e-05 1e-05
+for LR in 5e-03 1e-03 5e-04 7e-03 1e-04 5e-04 1e-02
 do
 
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_lm_lora_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/lm_long/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}_lora_freeze/run_$N \
+        --model_path ../runs/lm/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}_lora_freeze/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $BACKBONE_CLS \

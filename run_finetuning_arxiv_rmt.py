@@ -225,9 +225,9 @@ if __name__ == '__main__':
         return collated
 
 
-    train_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/tokenized/train')
-    valid_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/tokenized/valid')
-    test_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/tokenized/test')
+    train_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/train')
+    valid_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/valid')
+    test_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/test')
 
     
     # shuffle train data each epoch (one loop over train_dataset)

@@ -9,7 +9,7 @@ from itertools import chain
 from megatron.data.dataset_utils import get_indexed_dataset_
 
 import horovod.torch as hvd
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import torch
 import numpy as np
 import datasets
@@ -24,7 +24,7 @@ from lm_experiments_tools.trainer import Trainer
 from torch.nn.utils.rnn import pad_sequence
 from lm_experiments_tools.lm_datasets import get_lm_datasets
 
-load_dotenv()
+# load_dotenv() 
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)

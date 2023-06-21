@@ -11,15 +11,15 @@ MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=wikitext-2-v1
 
-ITERS=10000
+ITERS=6000
 TBS=32
 
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(1 2 2)
-MEMORY_SIZES=(2 1 2)
-BSS=(32 32 32)
+MAX_N_SEGMENTSS=(1 1)
+MEMORY_SIZES=(5 10)
+BSS=(8 8)
 
 for N in 1
 do
@@ -49,7 +49,7 @@ echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_lm_multiseg_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/lm/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_0-1/run_$N \
+        --model_path ../runs/lm_long/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_0-1/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \

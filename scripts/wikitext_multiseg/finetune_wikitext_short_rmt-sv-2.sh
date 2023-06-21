@@ -17,9 +17,9 @@ TBS=32
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(1 2 2)
-MEMORY_SIZES=(2 1 2)
-BSS=(32 32 32)
+MAX_N_SEGMENTSS=(1)
+MEMORY_SIZES=(2)
+BSS=(32)
 
 for N in 1
 do
@@ -41,7 +41,7 @@ do
 for SCHEDULER in linear
 do
 
-for LR in 5e-05
+for LR in 1e-05 7e-05
 do
 
 
