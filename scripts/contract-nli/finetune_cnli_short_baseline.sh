@@ -8,11 +8,12 @@ CUDA_LAUNCH_BLOCKING=1
 
 MODEL_TYPE=decoder
 BACKBONE_CLS=transformers:AutoModelForCausalLM
-TASK_NAME=contract-nli
+TASK_NAME=contract_nli
+METRIC=exact_match
 
 ITERS=6000
 TBS=32
-BS=8
+BS=16
 
 TGT_LEN=128
 INPUT_SEQ_LEN=128
@@ -44,7 +45,7 @@ echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_scrolls_rmt_decoder.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}/run_$N \
+        --model_path ../runs/test/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $BACKBONE_CLS \
@@ -59,6 +60,7 @@ horovodrun --gloo -np $NP python run_finetuning_scrolls_rmt_decoder.py \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
         --data_n_workers 2 \
         --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/10)) \
+        --optimize_metric $METRIC --optimize_mode max \
         --show_valid_examples 5 \
         --early_stopping_patience 15 \
         --seed $(($N+42)) \

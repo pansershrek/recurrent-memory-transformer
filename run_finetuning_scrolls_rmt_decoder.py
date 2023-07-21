@@ -9,7 +9,7 @@ from itertools import chain
 from megatron.data.dataset_utils import get_indexed_dataset_
 
 import horovod.torch as hvd
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
 import torch
 import numpy as np
 import datasets
@@ -54,7 +54,8 @@ torch.set_num_threads(4)
 torch.cuda.set_device(hvd.local_rank())
 
 parser = HfArgumentParser(TrainerArgs)
-parser.add_argument('--task_name', type=str, help="Task name, wikitext, ...")
+parser.add_argument('--task_name', type=str, help='Scrolls task name: "gov_report", "summ_screen_fd", "qmsum", '
+                                                  '"narrative_qa", "qasper", "quality", "contract_nli"')
 parser.add_argument('--validate_only', action='store_true', default=False,
                     help='Skip training and run only validation. (default: False)')
 parser.add_argument('--working_dir', type=str, default='.',
@@ -321,10 +322,11 @@ if __name__ == '__main__':
     else:
         if hvd.rank() == 0:
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
-        if args.model_type == 'encoder-decoder':
-            model = model_cls.from_pretrained(args.from_pretrained)
-        elif args.model_type == 'encoder' and args.task_name == 'contract_nli':
+        
+        if args.model_type == 'encoder' and args.task_name == 'contract_nli':
             model = model_cls.from_pretrained(args.from_pretrained, num_labels=num_labels)
+        else:
+            model = model_cls.from_pretrained(args.from_pretrained)
 
     # Aydar # Pass memory settings to pretrained model
     model.resize_token_embeddings(len(tokenizer))
@@ -421,7 +423,7 @@ if __name__ == '__main__':
     #   - implemented currently
     # - compute metrics on batch lvl
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
-    # scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
+    scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
 
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
@@ -441,6 +443,16 @@ if __name__ == '__main__':
         elif args.model_type == 'encoder':
             y, p = data['labels'], data['predictions']
 
+        if y is not None and p is not None:
+            # if args.model_type == 'encoder-decoder':
+            if not isinstance(y[0], list):
+                y = [[_y] for _y in y]
+            result = scrolls_metric.compute(predictions=p, references=y)
+            for metric_name in task_to_metric[args.task_name]:
+                metrics[metric_name] = result[metric_name]
+            # elif args.model_type == 'encoder' and args.task_name == 'contract_nli':
+            #     metrics['exact_match'] = accuracy_score(y, p) * 100
+            #     metrics['f1_micro'] = f1_score(y, p, average='micro')
         return metrics
 
     ### booydar
