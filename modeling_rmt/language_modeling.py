@@ -335,7 +335,6 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
             memory[non_empty_mask] = out.hidden_states[-1][:, self.write_memory_position]
 
         self.memory_state = memory
-
         out = self.process_outputs(base_model_outputs, kwargs)
         return out
     
