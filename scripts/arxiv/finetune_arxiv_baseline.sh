@@ -11,8 +11,8 @@ BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
 ITERS=150000
-TBS=32
-BS=8
+TBS=128
+BS=16
 
 TGT_LEN=1024
 INPUT_SEQ_LEN=1024
@@ -21,7 +21,7 @@ INPUT_SIZE=1024
 MAX_N_SEGMENTSS=(1)
 MEMORY_SIZES=(NA)
 
-for N in 1
+for N in 10
 do
 
 for MODEL_NAME in gpt2

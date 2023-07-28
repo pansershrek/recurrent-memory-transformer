@@ -11,32 +11,31 @@ MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=100000
-TBS=32
+ITERS=10000
+TBS=256
 
-TGT_LEN=1024
-INPUT_SIZE=1024
+TGT_LEN=128
+INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(6 7)
-BSS=(2 2 2)
+MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 16 32 64)
+BSS=(128 128 64 64 32 32 32 16 16 16 16 8 4)
 
-for MEMORY_SIZE in 2
-do 
-
-for N in 1
+for N in 4 5
 do
 
 for MODEL_NAME in gpt2
 do
 
+for SOURCE_N_SEGMENTS in 7
+do
+
 for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
 do
+MEMORY_SIZE=2
 MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]} 
 INPUT_SEQ_LEN=$(((INPUT_SIZE-2*MEMORY_SIZE)*MAX_N_SEGMENTS))
 BS=${BSS[j]}
-LR=1e-05
-
-K2=${MAX_N_SEGMENTS}
+K2=${SOURCE_N_SEGMENTS}
 
 for SEGMENT_ORDERING in regular
 do
@@ -44,16 +43,18 @@ do
 for SCHEDULER in linear
 do
 
+for LR in 1e-05
+do
 
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((MAX_N_SEGMENTS-1))-${MAX_N_SEGMENTS}/run_$N \
+        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_${SOURCE_N_SEGMENTS}-${MAX_N_SEGMENTS}_eval/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*(MAX_N_SEGMENTS-1)))-${TGT_LEN}-$((MAX_N_SEGMENTS-1))x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-$((K2-1))_from_cpt_$((MAX_N_SEGMENTS-2))-$((MAX_N_SEGMENTS-1))/run_1 \
+        --model_cpt ../runs/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}/run_$N \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \
@@ -61,13 +62,13 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --num_mem_tokens $MEMORY_SIZE \
         --max_n_segments $MAX_N_SEGMENTS\
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
-        --save_best \
+        --validate_only \
         --iters $ITERS \
         --k1 -1 --k2 $K2 \
         --optimizer AdamW  --weight_decay 0.001 \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
         --data_n_workers 2 \
-        --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/5)) \
+        --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/10)) \
         --show_valid_examples 5 \
         --early_stopping_patience 15 \
         --seed $(($N+42)) \
