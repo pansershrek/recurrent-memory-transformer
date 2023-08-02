@@ -23,8 +23,6 @@ BSS=(128 128 64 64 32 32 32 16 16 16 16 8 4)
 MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 )
 BSS=(64 64 32 32 32 16 16 16 8 8 8 4)
 
-MAX_N_SEGMENTSS=(16 32 64)
-BSS=(16 8 4)
 
 for N in 1
 do
@@ -32,7 +30,7 @@ do
 for MODEL_NAME in gpt2
 do
 
-for SOURCE_N_SEGMENTS in 4
+for SOURCE_N_SEGMENTS in 6
 do
 
 for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))

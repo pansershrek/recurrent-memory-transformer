@@ -126,6 +126,7 @@ parser.add_argument('--warmup_init', action='store_true', default=False,
 
 # LoRA args
 parser.add_argument('--use_lora', action='store_true', default=False, help='')
+parser.add_argument('--use_adapter', action='store_true', default=False, help='')
 parser.add_argument('--lora_attn_dim', type=int, default=8, help='')
 parser.add_argument('--lora_attn_alpha', type=int, default=32, help='')
 parser.add_argument('--lora_dropout', type=int, default=0.1, help='')
@@ -289,12 +290,18 @@ if __name__ == '__main__':
     if hvd.rank() == 0:
         logger.info(f'Using model class: {model_cls}')
 
-    if args.use_lora:
+    if args.use_lora or args.use_adapter:
         model_cfg = AutoConfig.from_pretrained(args.from_pretrained)
         model_cfg.use_lora = args.use_lora
         model_cfg.lora_attn_dim = args.lora_attn_dim
         model_cfg.lora_attn_alpha = args.lora_attn_alpha
         model_cfg.lora_dropout = args.lora_dropout
+
+        model_cfg.use_parallel_adapter = args.use_adapter
+        model_cfg.parallel_adapter_mode = 'ffn'
+        model_cfg.adapter_bottleneck_dim = 512
+        model_cfg.adapter_dropout = 0.1
+        model_cfg.adapter_scale = 4.0
 
         model = model_cls(config=model_cfg)
         if hvd.rank() == 0:
@@ -365,7 +372,7 @@ if __name__ == '__main__':
 
     if args.freeze_model_weights:
         for n, p in model.named_parameters():
-            if 'memory' not in n and 'lora' not in n:
+            if 'memory' not in n and 'lora' not in n and 'adapter' not in n:
                 p.requires_grad = False
         if hvd.rank() == 0:
             logger.info(f'Frozen moodel weights')

@@ -124,6 +124,13 @@ parser.add_argument('--relative_step', action='store_true', default=False,
 parser.add_argument('--warmup_init', action='store_true', default=False,
                     help='Adafactor warmup_init (default: False)')
 
+# LoRA args
+parser.add_argument('--use_lora', action='store_true', default=False, help='')
+parser.add_argument('--use_adapter', action='store_true', default=False, help='')
+parser.add_argument('--lora_attn_dim', type=int, default=8, help='')
+parser.add_argument('--lora_attn_alpha', type=int, default=32, help='')
+parser.add_argument('--lora_dropout', type=int, default=0.1, help='')
+
 
 
 if __name__ == '__main__':
@@ -282,16 +289,36 @@ if __name__ == '__main__':
     model_cls = get_cls_by_name(args.backbone_cls)
     if hvd.rank() == 0:
         logger.info(f'Using model class: {model_cls}')
-    if not args.from_pretrained:
-        model_cfg = AutoConfig.from_pretrained(args.model_cfg)
+
+    if args.use_lora or args.use_adapter:
+        model_cfg = AutoConfig.from_pretrained(args.from_pretrained)
+        model_cfg.use_lora = args.use_lora
+        model_cfg.lora_attn_dim = args.lora_attn_dim
+        model_cfg.lora_attn_alpha = args.lora_attn_alpha
+        model_cfg.lora_dropout = args.lora_dropout
+
+        model_cfg.use_parallel_adapter = args.use_adapter
+        model_cfg.parallel_adapter_mode = 'ffn'
+        model_cfg.adapter_bottleneck_dim = 512
+        model_cfg.adapter_dropout = 0.1
+        model_cfg.adapter_scale = 4.0
+
         model = model_cls(config=model_cfg)
-    else:
         if hvd.rank() == 0:
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
-        model = model_cls.from_pretrained(args.from_pretrained)
+        base_model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False)
+
+        model.load_state_dict(base_model.state_dict(), strict=False)
+    else:
+        if not args.from_pretrained:
+            model_cfg = AutoConfig.from_pretrained(args.model_cfg)
+            model = model_cls(config=model_cfg)
+        else:
+            if hvd.rank() == 0:
+                logger.info(f'Loading pretrained model: {args.from_pretrained}')
+            model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False)
 
     ## load cpt of backbone model
-    # logger.info(f'\n\n\n\n\n Backbone cpt: {args.backbone_cpt}')
     if args.backbone_cpt:
         backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
         cpt = torch.load(backbone_cpt, map_location='cpu')
@@ -330,22 +357,34 @@ if __name__ == '__main__':
         if args.model_cpt:
             model_cpt = os.path.join(args.model_cpt, "model_best.pth")
             cpt = torch.load(model_cpt, map_location='cpu')
-            # for n, p in model.named_parameters():
-            #     print(n)
             model.load_state_dict(cpt['model_state_dict'])
             if hvd.rank() == 0:
                 logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
 
-        if args.freeze_model_weights:
-            for n, p in model.named_parameters():
-                # if 'memory' not in n and 'wte' not in n:
-                if 'memory' not in n:
-                    p.requires_grad = False
-            if hvd.rank() == 0:
-                logger.info(f'Frozen moodel weights')
-                logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
+        # if args.freeze_model_weights:
+        #     for n, p in model.named_parameters():
+        #         # if 'memory' not in n and 'wte' not in n:
+        #         if 'memory' not in n:
+        #             p.requires_grad = False
+        #     if hvd.rank() == 0:
+        #         logger.info(f'Frozen moodel weights')
+        #         logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
 
-    
+    if args.freeze_model_weights:
+        for n, p in model.named_parameters():
+            if 'memory' not in n and 'lora' not in n and 'adapter' not in n:
+                p.requires_grad = False
+        if hvd.rank() == 0:
+            logger.info(f'Frozen moodel weights')
+            logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
+
+    # fix the not-contiguous error
+    def make_contiguous(module):
+        with torch.no_grad():
+            for param in module.parameters():
+                param.set_(param.contiguous())
+    make_contiguous(model)
+
     # define optimizer
     optimizer_cls = get_optimizer(args.optimizer)
     if optimizer_cls is None:

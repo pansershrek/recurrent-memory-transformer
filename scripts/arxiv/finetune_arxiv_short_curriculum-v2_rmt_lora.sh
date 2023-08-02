@@ -11,7 +11,7 @@ MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=500000
+ITERS=100000
 TBS=256
 
 TGT_LEN=128
@@ -62,6 +62,7 @@ horovodrun --gloo -np $NP python run_finetuning_arxiv_lora_rmt.py \
         --max_n_segments $MAX_N_SEGMENTS\
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --save_best \
+        --use_lora \
         --freeze_model_weights \
         --vary_n_segments \
         --iters $ITERS \

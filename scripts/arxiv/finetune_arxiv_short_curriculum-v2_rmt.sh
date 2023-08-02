@@ -8,7 +8,7 @@ CUDA_LAUNCH_BLOCKING=1
 
 MODEL_TYPE=decoder
 MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
-BACKBONE_CLS=transformers:AutoModelForCausalLM
+BACKBONE_CLS=modeling_gpt2:GPT2LMHeadModel
 TASK_NAME=arxiv
 
 ITERS=250000
@@ -17,8 +17,8 @@ TBS=32
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(6 7 8 9 10 )
-BSS=(32 32 32 16 16 16 8 8 8 8 8 4 4 4 2 2 )
+MAX_N_SEGMENTSS=(7 8 9 10 )
+BSS=(32 32 16 16 16 8 8 8 8 8 4 4 4 2 2 )
 
 for MEMORY_SIZE in 2
 do 

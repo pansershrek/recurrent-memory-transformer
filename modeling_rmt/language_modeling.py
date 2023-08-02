@@ -307,7 +307,8 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
     
     def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
                 inputs_embeds=None, labels=None, labels_mask=None, output_attentions=None, output_hidden_states=None, return_dict=None):
-        kwargs = {'attention_mask': attention_mask, 'token_type_ids': token_type_ids,
+        kwargs = {'attention_mask': attention_mask, 
+                #   'token_type_ids': token_type_ids,
                   'position_ids': position_ids, 'inputs_embeds': inputs_embeds,
                   'labels_mask': labels_mask, #'pos_weight': pos_weight,
                   'labels': labels, 'output_attentions': output_attentions,
