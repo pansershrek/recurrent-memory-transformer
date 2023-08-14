@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 from itertools import chain
 
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import torch
 import numpy as np
 import datasets
@@ -18,7 +18,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 import accelerate
 
-load_dotenv()
+# load_dotenv()
 
 logger_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 logging.basicConfig(format=logger_fmt, level=logging.INFO)

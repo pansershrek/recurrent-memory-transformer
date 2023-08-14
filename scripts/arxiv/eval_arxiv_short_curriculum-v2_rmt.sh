@@ -8,7 +8,7 @@ CUDA_LAUNCH_BLOCKING=1
 
 MODEL_TYPE=decoder
 MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
-BACKBONE_CLS=transformers:AutoModelForCausalLM
+BACKBONE_CLS=modeling_gpt2:GPT2LMHeadModel
 TASK_NAME=arxiv
 
 ITERS=10000
@@ -20,8 +20,8 @@ INPUT_SIZE=128
 MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 16 32 64)
 BSS=(128 128 64 64 32 32 32 16 16 16 16 8 4)
 
-MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 )
-BSS=(64 64 32 32 32 16 16 16 8 8 8 4)
+MAX_N_SEGMENTSS=(11 12 13 14 15)
+BSS=(16 16 16 16 16)
 
 
 for N in 1
@@ -30,7 +30,7 @@ do
 for MODEL_NAME in gpt2
 do
 
-for SOURCE_N_SEGMENTS in 6
+for SOURCE_N_SEGMENTS in 7
 do
 
 for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))

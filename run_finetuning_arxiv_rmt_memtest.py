@@ -2,24 +2,28 @@ import json
 import logging
 import sys
 import os
+import math
+import random
 import shutil
 from pathlib import Path
-
+from itertools import chain
 from megatron.data.dataset_utils import get_indexed_dataset_
 
 import horovod.torch as hvd
 # from dotenv import load_dotenv
 import torch
 import numpy as np
+import datasets
 from torch.utils.data import DataLoader, DistributedSampler
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset, load_from_disk
 from huggingface_hub import hf_hub_download
 from sklearn.metrics import f1_score, accuracy_score
 
 from lm_experiments_tools import TrainerArgs
 from lm_experiments_tools.trainer_memtest import Trainer
 
-
+from torch.nn.utils.rnn import pad_sequence
+from lm_experiments_tools.lm_datasets import get_lm_datasets
 # load_dotenv()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -50,8 +54,7 @@ torch.set_num_threads(4)
 torch.cuda.set_device(hvd.local_rank())
 
 parser = HfArgumentParser(TrainerArgs)
-# parser.add_argument('--task_name', type=str, help='Scrolls task name: "gov_report", "summ_screen_fd", "qmsum", '
-#                                                   '"narrative_qa", "qasper", "quality", "contract_nli"')
+parser.add_argument('--task_name', type=str, help="Task name, wikitext, ...")
 parser.add_argument('--validate_only', action='store_true', default=False,
                     help='Skip training and run only validation. (default: False)')
 parser.add_argument('--working_dir', type=str, default='.',
@@ -82,6 +85,7 @@ parser.add_argument('--model_type', type=str, default='encoder-decoder',
 # Aydar # RMT args 
 parser.add_argument('--input_size', type=int, default=None, help='maximal input size of the backbone model')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
+parser.add_argument('--xl_cache_size', type=int, default=None, help='size of Transformer-XL -like cache')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
 parser.add_argument('--sum_loss', action='store_true', default=False,
                     help='with this flag task loss from all segments is summed')
@@ -95,8 +99,16 @@ parser.add_argument('--reconstruction_loss_coef', type=float, default=None,
                     help='reconstuction loss ratio in total loss')
 # parser.add_argument('--segment_ordering', type=str,help='????', default='regular',
 #                     choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
-parser.add_argument('--num_valid_samples', type=int, default=None, help="number of samples for validation")
+parser.add_argument('--retain_graph', action='store_true', help='Retain computation graph during backward pass', default=False)
+parser.add_argument('--use_truncated_backward', action='store_true', default=False,
+                    help='whether to use RMT truncated bptt method in backward')
+parser.add_argument('--k1', type=int, default=-1, help='(not implemented) If not -1, gradient update is done each k1 segments')
+parser.add_argument('--k2', type=int, default=-1, help='number of last segments used by backward')
+parser.add_argument('--freeze_model_weights', action='store_true', default=False,
+                    help='Stop training all model weights except memory layers')
+parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
 
+parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
 
 # tokenizer
 # todo: add wordpiece tokenizers support?
@@ -114,51 +126,8 @@ parser.add_argument('--warmup_init', action='store_true', default=False,
 
 
 
-names = ['Mary', 'John', 'Daniel', 'Sandra']
-actions = ['moved', 'went', 'went back', 'journeyed', 'travelled']
-places = ['bathroom', 'hallway', 'garden', 'office', 'bedroom', 'kitchen']
-choices_dict = {'names': names, 'actions': actions, 'places': places}
-
-class MemoryDataset(Dataset):
-    def __init__(self, choices_dict=choices_dict, num_facts=1, split='train', dataset='quality', num_samples=None):
-        self.choices_dict = choices_dict
-        self.dataset = load_dataset('tau/scrolls', dataset)[split]
-        self.num_facts = num_facts
-        self.num_samples = num_samples
-
-    def __getitem__(self, ind):
-        if self.num_samples:
-            ind = np.random.randint(len(self.dataset))
-        sample = self.dataset[ind]
-        sample['fact'], sample['question'], sample['answer'] = self.generate_qa() 
-        # print("sample['answer']", sample['answer'])
-        return sample
-    
-    def __len__(self):
-        return len(self.dataset) if self.num_samples is None else self.num_samples
-
-    def generate_qa(self):
-        names, actions, places = self.choices_dict['names'], self.choices_dict['actions'], self.choices_dict['places']
-
-        np.random.shuffle(names)
-        facts, questions, answers = [], [], []
-        for fact_num, name in zip(range(self.num_facts), names):
-            action, place = np.random.choice(actions), np.random.choice(places)
-
-            facts.append(f'{name} {action} to the {place}')
-            questions.append(f'Where is {name}?')
-            answers.append(place)
-
-        facts = ', '.join(facts) + '.'
-        questions = ' '.join(questions)
-        answers = ', '.join(answers)
-        
-        return [facts], [questions], [answers]
-
-
 if __name__ == '__main__':
     args = parser.parse_args()
-    # print('\n\n\n\n\n\n\nBs', args.batch_size)
     # set current working dir
     args.working_dir = str(Path(args.working_dir).expanduser().absolute())
     os.chdir(args.working_dir)
@@ -183,92 +152,89 @@ if __name__ == '__main__':
     else:
         tokenizer = AutoTokenizer.from_pretrained(args.from_pretrained)
 
-
-    # get datasets
+    # Prepare datasets
     if hvd.rank() == 0:
-        logger.info(f'preparing dataset for babilong')
+        logger.info(f'preparing dataset for {args.task_name}')
     
-    train_dataset = MemoryDataset(choices_dict, num_facts=1, split='train', dataset='quality', num_samples=10)
-    valid_dataset = MemoryDataset(choices_dict, num_facts=1, split='validation', dataset='quality', num_samples=10)
-    
-    answers = train_dataset.choices_dict['places']
-    labels_map = dict(zip(answers, range(len(answers))))
-    num_labels = len(labels_map)
-    if args.num_mem_tokens is None:
-        input_seg_size = args.input_size
-    else:
-        input_seg_size = args.input_size - args.num_mem_tokens - tokenizer.num_special_tokens_to_add()
-        if 'sep_token' in tokenizer.special_tokens_map:
-            input_seg_size -= 1
+    block_size = args.input_size 
+    if args.num_mem_tokens is not None:
+        block_size -= 2 * args.num_mem_tokens
+    if args.xl_cache_size is not None:
+        block_size -= args.xl_cache_size
+    history_size = args.input_seq_len - block_size
 
-    if args.model_type == 'encoder-decoder':
-        # raise NotImplementedError
-        global_attention_first_token = False  # should be True for LED
-        encode_plus_kwargs = {'truncation': True, 'padding': 'longest', 'pad_to_multiple_of': 1}
-        # generate_kwargs = {'max_length': args.target_seq_len, 'min_length': args.target_seq_len}
-        generate_kwargs = {}
+    class segmentDataLoaderOTF(DataLoader):
+        def __init__(self, dataset, block_size, history_size, max_samples=None, shuffle=False, *args, **kwargs):
+            super().__init__(dataset, *args, **kwargs)
+            self.block_size = block_size
+            self.history_size = history_size
+            self.max_samples = max_samples
+            self.shuffle = shuffle
+                
+        def get_samples(self, document):
+            input_ids, attention_mask = document['input_ids'], document['attention_mask']
+            samples = [input_ids[max({0, start - self.history_size}): start + self.block_size] for start in range(self.history_size, len(input_ids), self.block_size)]
+            return samples
+        
+        def __iter__(self):
+            inds = list(range(len(self.dataset)))
 
-        def collate_fn(batch):
-            # cut too long strings because they may slow down tokenization
-            # inputs = [b['fact'] + b['input'][:args.input_seq_len * 10] for b in batch]
-            inputs = [b['fact'] + ' '.join([b['input']]) * int(np.ceil(args.input_seq_len * 10 / len(b['input']))) for b in batch]
-            questions = [b['question'] for b in batch]
-            labels = [b['answer'][:args.target_seq_len * 10] for b in batch]
-            if args.input_prefix:
-                inputs = [args.input_prefix + inp for inp in inputs]
+            if self.max_samples is not None:
+                inds = inds[:self.max_samples]
 
-            max_length = min(args.max_n_segments * input_seg_size, args.input_seq_len)
-            features = tokenizer.batch_encode_plus(list(inputs), return_tensors='pt', **encode_plus_kwargs, max_length=max_length)
-            questions = tokenizer.batch_encode_plus(list(questions), return_tensors='pt', **encode_plus_kwargs)['input_ids']
+            if self.shuffle: 
+                random.shuffle(inds)
 
-            with tokenizer.as_target_tokenizer():
-                labels = tokenizer.batch_encode_plus(list(labels), max_length=args.target_seq_len, return_tensors='pt',
-                                                        **encode_plus_kwargs).input_ids
-            labels[labels == tokenizer.pad_token_id] = -100
-            features['labels'] = labels
-            features['id'] = [b['id'] for b in batch]
-            features['target_text'] = [b['answer'] for b in batch]
-            if 'global_attention_mask' in features:
-                raise RuntimeError('What global attention mask for Longformer and LongformerEncoder-Decoder should be?')
-            return features
+            doc_ind = 0
+            samples = []
 
-    elif args.model_type == 'encoder':
-        if args.use_generate_on_valid:
-            raise RuntimeError('use_generate_on_valid should be set to False for encoder-only models')
+            while True:
+                if doc_ind >= len(inds):
+                    break
+                try: 
+                    while len(samples) < self.batch_size:
+                        document = self.dataset[inds[doc_ind]]
+                        doc_ind += 1
+                        samples += self.get_samples(document)
+                        if doc_ind >= len(inds):
+                            raise(StopIteration)
+                except(StopIteration):
+                    pass
 
-        encode_plus_kwargs = {
-                            #   'max_length': args.input_seq_len,
-                              'truncation': True,
-                              'padding': 'longest',
-                              'pad_to_multiple_of': 1}
-        generate_kwargs = {}
-
-        def collate_fn(batch, input_seg_size=input_seg_size):
-            # cut too long strings because they may slow down tokenization
-            # inputs = ['[memorize] ' + b['fact'] + ' [/memorize] ' + b['input'][:args.input_seq_len * 10] for b in batch]
-            # inputs = [b['fact'] + b['input'][:args.input_seq_len * 10] for b in batch]
-            inputs = [b['fact'] + ' '.join([b['input']]) * int(np.ceil(args.input_seq_len * 10 / len(b['input']))) for b in batch]
-            questions = [b['question'] for b in batch]
-            # print('batch', batch[0]['answer'])
-            # print('questions', questions)
-            labels = [b['answer'][:args.target_seq_len * 10] for b in batch]
-            if args.input_prefix:
-                inputs = [args.input_prefix + inp for inp in inputs]
-
-            max_length = min(args.max_n_segments * input_seg_size, args.input_seq_len)
-            features = tokenizer.batch_encode_plus(list(inputs), return_tensors='pt', **encode_plus_kwargs, max_length=max_length)
-            questions = tokenizer.batch_encode_plus(list(questions), return_tensors='pt', **encode_plus_kwargs)['input_ids']
+                batch, samples = samples[:self.batch_size], samples[self.batch_size:]
+                yield self.collate_fn(batch)
             
-            q_len = questions.shape[1] - 1
-            features['input_ids'] = torch.cat([features['input_ids'][:, :max_length - q_len], questions[:, 1:]], dim=1)
-            
-            # print('\n\n\n\nlabels', labels)
-            labels = np.array([labels_map[t] for t in labels])
-            features['labels'] = torch.from_numpy(labels)
-            return features
 
-    else:
-        raise NotImplementedError('only encoder and encoder-decoder models are supported')
+    from torch.nn.utils.rnn import pad_sequence
+    id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    def collate_fn(batch):
+        input_ids = labels = [torch.tensor(b[::-1]) for b in batch]
+        attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
+        input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T.flip(1)
+        labels = pad_sequence(labels, padding_value=-100).T.flip(1)
+        attention_mask = pad_sequence(attention_mask, padding_value=0).T.flip(1)
+
+        collated = {'input_ids': input_ids,
+                    'labels': labels, 
+                    'attention_mask': attention_mask}
+        
+        if input_ids.shape[1] != block_size:
+            labels_mask = torch.ones_like(input_ids, dtype=bool)
+            labels_mask[:, :-block_size] = False
+            collated['labels_mask'] = labels_mask
+
+        if getattr(args, 'vary_n_segments', False):
+            n_segments = random.randint(0, args.max_n_segments)
+            n_tokens = n_segments * block_size
+            for k in collated:
+                collated[k] = collated[k][:, -n_tokens:]
+        
+        return collated
+
+
+    train_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/train')
+    valid_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/valid')
+    test_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/test')
 
     
     # shuffle train data each epoch (one loop over train_dataset)
@@ -277,17 +243,38 @@ if __name__ == '__main__':
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     global_batch_size = per_worker_batch_size * hvd.size()
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
-    train_dataloader = DataLoader(train_dataset, batch_size=per_worker_batch_size, sampler=train_sampler,
-                                  collate_fn=collate_fn, **kwargs)
+    if not args.validate_only:
+        train_dataloader = segmentDataLoaderOTF(train_dataset, batch_size=per_worker_batch_size, sampler=train_sampler,
+                                        block_size=block_size, 
+                                        history_size=history_size, 
+                                        shuffle=True,
+                                        collate_fn=collate_fn, **kwargs)
+    else:
+        train_dataloader = None
+
     # get validation dataset
+    # max_samples = 1000 if args.validate_only else 100
+    max_samples = 100
     valid_dataloader = None
     if hvd.rank() == 0:
-        logger.info(f'preparing validation data from babilong')
-    # if args.task_name in tasks_with_duplicates:
-    #     valid_dataset = drop_duplicates_in_input(valid_dataset)
+        logger.info(f'preparing validation data')
     valid_sampler = DistributedSampler(valid_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
-                                  collate_fn=collate_fn, **kwargs)
+    valid_dataloader = segmentDataLoaderOTF(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
+                                    block_size=block_size, 
+                                    history_size=history_size, 
+                                    shuffle=False,
+                                    max_samples=max_samples,
+                                    collate_fn=collate_fn, drop_last=True, **kwargs)
+    
+    # # get test dataset
+    # test_sampler = DistributedSampler(test_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
+    # test_dataloader = segmentDataLoaderOTF(test_dataset, batch_size=per_worker_batch_size, sampler=test_sampler,
+    #                                 block_size=block_size, 
+    #                                 history_size=history_size, 
+    #                                 shuffle=False,
+    #                                 max_samples=max_samples,
+    #                                 collate_fn=collate_fn, drop_last=True, **kwargs)
+    
     if args.valid_interval is None:
         args.valid_interval = args.log_interval
 
@@ -297,34 +284,32 @@ if __name__ == '__main__':
         logger.info(f'Using model class: {model_cls}')
     if not args.from_pretrained:
         model_cfg = AutoConfig.from_pretrained(args.model_cfg)
-        if args.model_type == 'encoder':
-            model_cfg.num_labels = num_labels
         model = model_cls(config=model_cfg)
     else:
         if hvd.rank() == 0:
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
-        if args.model_type == 'encoder-decoder':
-            model = model_cls.from_pretrained(args.from_pretrained)
-        elif args.model_type == 'encoder':
-            model = model_cls.from_pretrained(args.from_pretrained, num_labels=num_labels)
+        model = model_cls.from_pretrained(args.from_pretrained)
 
+    ## load cpt of backbone model
+    # logger.info(f'\n\n\n\n\n Backbone cpt: {args.backbone_cpt}')
+    if args.backbone_cpt:
+        backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
+        cpt = torch.load(backbone_cpt, map_location='cpu')
+        model.load_state_dict(cpt['model_state_dict'])
+        if hvd.rank() == 0:
+            logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
     # Aydar # Pass memory settings to pretrained model
     if args.num_mem_tokens is not None:
         if args.memory_forward_func is not None:
             args.memory_forward_func = get_cls_by_name(args.memory_forward_func)
-        #     implementation_path = os.path.dirname(args.memory_forward_implementation)
-        #     print(f'Loooking for memory_forward in {implementation_path}')
-        #     sys.path.append(implementation_path)
-        #     from memory_forward import memory_forward
-        # else:
-        #     memory_forward = None
 
         rmt_config = {
             'num_mem_tokens': args.num_mem_tokens, 
             'max_n_segments': args.max_n_segments,
+            'xl_cache_size': args.xl_cache_size,
             # 'segment_ordering': args.segment_ordering,
             'input_size': args.input_size,
-            'bptt_depth': args.bptt_depth, 
+            'k1': args.k1, 'k2': args.k2,
             'sum_loss': args.sum_loss,
             'tokenizer': tokenizer,
             'memory_forward_func': args.memory_forward_func,
@@ -337,10 +322,29 @@ if __name__ == '__main__':
             logger.info(f'Wrapping in: {rmt_cls}')
         
         model = rmt_cls(model, **rmt_config)
+
+        ## turn on memory resetting on validation
+        model.rmt_config['reinit_mem_each_fwd'] = True
+
+        ## load cpt of rmt
         if args.model_cpt:
             model_cpt = os.path.join(args.model_cpt, "model_best.pth")
             cpt = torch.load(model_cpt, map_location='cpu')
+            # for n, p in model.named_parameters():
+            #     print(n)
             model.load_state_dict(cpt['model_state_dict'])
+            if hvd.rank() == 0:
+                logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
+
+        if args.freeze_model_weights:
+            for n, p in model.named_parameters():
+                # if 'memory' not in n and 'wte' not in n:
+                if 'memory' not in n:
+                    p.requires_grad = False
+            if hvd.rank() == 0:
+                logger.info(f'Frozen moodel weights')
+                logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
+
     
     # define optimizer
     optimizer_cls = get_optimizer(args.optimizer)
@@ -360,22 +364,17 @@ if __name__ == '__main__':
                                   weight_decay=args.weight_decay)
     else:
         optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        
+    if args.model_cpt or args.backbone_cpt:
+        optimizer.load_state_dict(cpt['optimizer_state_dict'])
 
     # for encoder only classification
     def keep_for_metrics_fn(batch, output):
         # select data from batch and model output that would be used to compute metrics
         data = {}
-        if 'generation_outputs' in output:
-            data['labels'] = batch['target_text']
-
-            data['generation_outputs'] = output['generation_outputs']
-        if args.model_type == 'encoder':
-            
-            ##### booydar
-            data['labels'] = batch['labels']
-            for key in batch.keys():
-                if 'loss' in key: 
-                    data[key] = batch[key]
+        data['labels'] = batch['labels']
+        data['loss'] = output['loss']
+        if 'logits' in output:
             data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
         return data
 
@@ -395,32 +394,21 @@ if __name__ == '__main__':
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
         metrics = {}
-        y, p = None, None
-        if args.model_type == 'encoder-decoder' and 'generation_outputs' in data:
-            # replace -100 with pad token in labels
-            y = data['labels']
-            p = tokenizer.batch_decode(data['generation_outputs'], skip_special_tokens=True)
+        if 'predictions' in data:
+            y, p = data['labels'], data['predictions']
             if hvd.rank() == 0 and args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
+                    # logger.info(f'y: {tokenizer.decode(y[i])}')
+                    # logger.info(f'p: {tokenizer.decode(p[i])}')
                     logger.info(f'y: {y[i]}')
                     logger.info(f'p: {p[i]}')
-                    logger.info(f'p ids: {data["generation_outputs"][i]}')
                     logger.info('-' * 50)
-            # todo: do we need to better clean P to remove tokens after eos? not remove special tokens only
-        elif args.model_type == 'encoder':
-            y, p = data['labels'], data['predictions']
+        try:
+            perplexity = math.exp(data["loss"].mean())
+        except OverflowError:
+            perplexity = float("inf")
+        metrics["perplexity"] = perplexity
 
-        if y is not None and p is not None:
-            if args.model_type == 'encoder-decoder':
-                metrics['exact_match'] = np.mean([pred == label for pred, label in zip(y, p)]) * 100
-                # if not isinstance(y[0], list):
-                #     y = [[_y] for _y in y]
-                # result = scrolls_metric.compute(predictions=p, references=y)
-                # for metric_name in task_to_metric[args.task_name]:
-                    # metrics[metric_name] = result[metric_name]
-            elif args.model_type == 'encoder':
-                metrics['exact_match'] = accuracy_score(y, p) * 100
-                metrics['f1_micro'] = f1_score(y, p, average='micro')
         return metrics
 
     ### booydar
@@ -429,7 +417,7 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs=generate_kwargs if args.use_generate_on_valid else {})
+                      generate_kwargs={})
 
     if not args.validate_only:
         # train loop
@@ -446,6 +434,10 @@ if __name__ == '__main__':
             if hvd.rank() == 0:
                 logger.info('Runnning validation on valid data:')
             trainer.validate(valid_dataloader, write_tb=False)
+        # if test_dataloader is not None:
+        #     if hvd.rank() == 0:
+        #         logger.info('Runnning validation on test data:')
+        #     trainer.validate(test_dataloader, write_tb=False)
     else:
         # run validation, do not write to tensorboard
         # if hvd.rank() == 0:
@@ -455,3 +447,7 @@ if __name__ == '__main__':
             if hvd.rank() == 0:
                 logger.info('Running validation on valid data:')
             trainer.validate(valid_dataloader, write_tb=True)
+        # if test_dataloader is not None:
+        #     if hvd.rank() == 0:
+        #         logger.info('Runnning validation on test data:')
+        #     trainer.validate(test_dataloader, split='test', write_tb=True)

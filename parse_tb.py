@@ -253,3 +253,19 @@ df.to_csv(out_path, index=False)
 # out_path = 'results/quality_new.csv'
 
 # parse_to_csv(path, out_path, target_cols, metric_names)
+
+
+# memtest
+paths = [
+        '/home/jovyan/rmt/runs/memtest/arxiv/',
+        ]
+
+paths = [Path(p) for p in paths]
+metric_names = ['loss'] + [f'used_memory_gpu_{i}' for i in range(8)]
+new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
+target_cols = TGT_COLS + ['time'] + new_cols
+out_path = 'results/memtest.csv'
+
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)

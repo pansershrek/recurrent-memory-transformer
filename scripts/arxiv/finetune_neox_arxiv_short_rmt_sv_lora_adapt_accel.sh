@@ -17,10 +17,10 @@ TBS=256
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(1)
-BSS=(64)
+MAX_N_SEGMENTSS=(1 2)
+BSS=(256 128)
 
-for MEMORY_SIZE in 0
+for MEMORY_SIZE in 5
 do 
 
 for N in 1
@@ -47,9 +47,9 @@ do
 
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
-horovodrun --gloo -np $NP python run_finetuning_neox_arxiv_lora_rmt.py \
+horovodrun --gloo -np $NP python run_finetuning_neox_arxiv_peft_rmt_accel.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_adapt/run_$N \
+        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_lora_adapt/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
@@ -61,6 +61,7 @@ horovodrun --gloo -np $NP python run_finetuning_neox_arxiv_lora_rmt.py \
         --max_n_segments $MAX_N_SEGMENTS\
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --save_best \
+        --use_lora \
         --use_adapter \
         --freeze_model_weights \
         --vary_n_segments \
