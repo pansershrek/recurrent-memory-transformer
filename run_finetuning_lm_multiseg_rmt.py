@@ -1,12 +1,9 @@
 import json
 import logging
-import sys
 import os
 import math
-import shutil
 from pathlib import Path
 from itertools import chain
-from megatron.data.dataset_utils import get_indexed_dataset_
 
 import horovod.torch as hvd
 from dotenv import load_dotenv
@@ -14,15 +11,11 @@ import torch
 import numpy as np
 import datasets
 from torch.utils.data import DataLoader, DistributedSampler
-from datasets import Dataset, load_dataset
-from huggingface_hub import hf_hub_download
-from sklearn.metrics import f1_score, accuracy_score
 
 from lm_experiments_tools import TrainerArgs
 from lm_experiments_tools.trainer import Trainer
 
 from torch.nn.utils.rnn import pad_sequence
-from lm_experiments_tools.lm_datasets import get_lm_datasets
 
 load_dotenv()
 
@@ -436,11 +429,12 @@ if __name__ == '__main__':
         if valid_dataloader is not None:
             if hvd.rank() == 0:
                 logger.info('Runnning validation on valid data:')
-            trainer.validate(valid_dataloader, write_tb=False)
+            trainer.validate(valid_dataloader, write_tb=False, split='valid')
         if test_dataloader is not None:
             if hvd.rank() == 0:
                 logger.info('Runnning validation on test data:')
-            trainer.validate(test_dataloader, write_tb=False)
+            trainer.validate(test_dataloader, write_tb=True, split='test')
+        trainer.save_metrics(save_path=args.model_path)
     else:
         # run validation, do not write to tensorboard
         if hvd.rank() == 0:
@@ -449,8 +443,8 @@ if __name__ == '__main__':
         if valid_dataloader is not None:
             if hvd.rank() == 0:
                 logger.info('Running validation on valid data:')
-            trainer.validate(valid_dataloader, write_tb=True)
+            trainer.validate(valid_dataloader, write_tb=False, split='valid')
         if test_dataloader is not None:
             if hvd.rank() == 0:
                 logger.info('Runnning validation on test data:')
-            trainer.validate(test_dataloader, write_tb=True)
+            trainer.validate(test_dataloader, write_tb=False, split='test')

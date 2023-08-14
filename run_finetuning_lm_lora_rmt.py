@@ -9,7 +9,7 @@ from itertools import chain
 from megatron.data.dataset_utils import get_indexed_dataset_
 
 import horovod.torch as hvd
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import torch
 import numpy as np
 import datasets
@@ -24,7 +24,7 @@ from lm_experiments_tools.trainer import Trainer
 from torch.nn.utils.rnn import pad_sequence
 from lm_experiments_tools.lm_datasets import get_lm_datasets
 
-load_dotenv()
+# load_dotenv()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -109,6 +109,8 @@ parser.add_argument('--k2', type=int, default=-1, help='number of last segments 
 parser.add_argument('--freeze_model_weights', action='store_true', default=False,
                     help='Stop training all model weights except memory layers')
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
+
+parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 0 to max_n_segments')
 
 # LoRA args
 parser.add_argument('--use_lora', action='store_true', default=False, help='')
@@ -258,6 +260,12 @@ if __name__ == '__main__':
                 labels_mask[:, :-block_size] = False
                 collated['labels_mask'] = labels_mask
 
+            if args.vary_n_segments:
+                n_segments = np.random.randint(1, args.max_n_segments + 1)
+                n_tokens = n_segments * block_size
+                for k in collated:
+                    collated[k] = collated[k][:, -n_tokens:]
+
             return collated
 
 
@@ -323,8 +331,6 @@ if __name__ == '__main__':
         base_model = model_cls.from_pretrained(args.from_pretrained)
         # state_dict = {k:v.contiguous() for k, v in base_model.state_dict().items()}
         model.load_state_dict(base_model.state_dict(), strict=False)
-        # for p in model.parameters():
-        #     p = p.contiguous()
     else:
         if not args.from_pretrained:
             model_cfg = AutoConfig.from_pretrained(args.model_cfg)
@@ -486,7 +492,7 @@ if __name__ == '__main__':
         # run validation, do not write to tensorboard
         if hvd.rank() == 0:
             logger.info('Running validation on train set:')
-        trainer.validate(train_dataloader, split='train', write_tb=True)
+        # trainer.validate(train_dataloader, split='train', write_tb=True)
         if valid_dataloader is not None:
             if hvd.rank() == 0:
                 logger.info('Running validation on valid data:')

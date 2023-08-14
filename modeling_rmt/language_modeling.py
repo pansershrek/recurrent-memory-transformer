@@ -286,10 +286,11 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
         self.write_memory_position = range(-num_mem_tokens, 0)
 
     def set_memory(self, input_shape):
-        create_memory = self.training \
-                        or not self.rmt_config.get('keep_memory', False) \
-                        or not hasattr(self, 'memory_state') \
-                        or self.rmt_config['max_n_segments'] == 1 
+        # create_memory = self.training \
+        #                 or self.rmt_config.get('reinit_mem_each_fwd') \
+        #                 or not hasattr(self, 'memory_state') \
+        #                 or self.rmt_config['max_n_segments'] == 1 
+        create_memory = True
         if create_memory:
             memory = self.memory.repeat(input_shape[0], 1, 1)
         else:
@@ -306,7 +307,8 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
     
     def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None,
                 inputs_embeds=None, labels=None, labels_mask=None, output_attentions=None, output_hidden_states=None, return_dict=None):
-        kwargs = {'attention_mask': attention_mask, 'token_type_ids': token_type_ids,
+        kwargs = {'attention_mask': attention_mask, 
+                #   'token_type_ids': token_type_ids,
                   'position_ids': position_ids, 'inputs_embeds': inputs_embeds,
                   'labels_mask': labels_mask, #'pos_weight': pos_weight,
                   'labels': labels, 'output_attentions': output_attentions,
@@ -334,7 +336,6 @@ class RMTDecoderLMHeadMultiSeg(RMTBaseModel):
             memory[non_empty_mask] = out.hidden_states[-1][:, self.write_memory_position]
 
         self.memory_state = memory
-
         out = self.process_outputs(base_model_outputs, kwargs)
         return out
     
@@ -499,12 +500,202 @@ class RMTDecoderXLCache(RMTDecoderLMHeadMultiSeg):
 
         out = self.process_outputs(base_model_outputs, kwargs)
         return out
+
+import os
+import pickle
+def save_tensor(tensor, folder='/home/jovyan/rmt/losses_dump/losses/', id=-1):
+    path = os.path.join(folder, f'{id}.pickle')
+    with open(path, 'wb') as handle:
+        pickle.dump(tensor, handle)
+        
+class RMTDecoderSaveLoss(RMTDecoderLMHeadMultiSeg):
+    def process_outputs(self, model_outputs, kwargs):
+        if not hasattr(self, 'batch_id'):
+            self.batch_id = 0
+
+        if self.num_mem_tokens in {0, None}:
+            full_logits = torch.cat([o.logits for o in model_outputs], dim=1)
+            truncated_hs = [[lh for lh in o.hidden_states] for o in model_outputs]
+        else:    
+            full_logits = torch.cat([o.logits[:, self.num_mem_tokens:-self.num_mem_tokens] for o in model_outputs], dim=1)
+            truncated_hs = [[lh[:, self.num_mem_tokens:-self.num_mem_tokens] for lh in o.hidden_states] for o in model_outputs]
+        full_hidden_states = tuple([torch.cat(layer_hs, dim=1) for layer_hs in zip(*truncated_hs)])
+
+        rmt_out = CausalLMOutputWithCrossAttentions()
+        full_labels = kwargs.get('labels')
+        if full_labels is not None:
+            shift_labels = full_labels[..., 1:].contiguous()
+            shift_logits = full_logits[..., :-1, :].contiguous()
+            flat_labels = shift_labels.view(-1)
+            flat_logits = shift_logits.view(-1, shift_logits.size(-1))
+            
+            loss_fct = CrossEntropyLoss(reduction='none')
+            labels_mask = kwargs.get('labels_mask')
+            if labels_mask is not None:
+                shift_mask = labels_mask[..., :-1].contiguous()
+                flat_labels = flat_labels[shift_mask.view(-1)]
+                flat_logits = flat_logits[shift_mask.view(-1)]
+                
+            loss = loss_fct(flat_logits, flat_labels)
+            rmt_out['loss'] = loss.mean()
+
+            save_tensor(shift_mask[:, -self.segment_size:], '/home/jovyan/rmt/losses_dump/masks/', self.batch_id)
+            save_tensor(loss.reshape(shift_mask.shape[0], -1)[:, -self.segment_size:], '/home/jovyan/rmt/losses_dump/losses/', self.batch_id)
+            self.batch_id += 1
+
+        rmt_out['logits'] = full_logits
+        segment_keys = ['loss', 'logits']
+        if kwargs.get('output_attentions'):
+            segment_keys.append('attentions')
+        if kwargs.get('output_hidden_states'):
+            segment_keys.append('hidden_states')
+            rmt_out['hidden_states'] = full_hidden_states
+
+        for seg_num, out in enumerate(model_outputs):
+            for key, value in out.items():
+                if any([sk in key for sk in segment_keys]):
+                    rmt_out[f'{key}_{seg_num}'] = value
+
+        return rmt_out 
+
+
+class RMTDecoderMSCPUOffload(RMTDecoderLMHeadMultiSeg):
+    def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None, inputs_embeds=None, labels=None, labels_mask=None, output_attentions=None, output_hidden_states=None, return_dict=None):
+        # return super().forward(input_ids, attention_mask, token_type_ids, position_ids, head_mask, inputs_embeds, labels, labels_mask, output_attentions, output_hidden_states, return_dict)
+        kwargs = {'attention_mask': attention_mask, 'token_type_ids': token_type_ids,
+                  'position_ids': position_ids, 'inputs_embeds': inputs_embeds,
+                  'labels_mask': labels_mask, #'pos_weight': pos_weight,
+                  'labels': labels, 'output_attentions': output_attentions,
+                  'output_hidden_states': output_hidden_states, 'return_dict': return_dict,
+                  }
+
+        memory = self.set_memory(input_ids.shape)
+        segmented = self.pad_and_segment(input_ids, labels)
+
+        base_model_outputs = []
+        for seg_num, segment in enumerate(zip(*segmented)):
+
+            seg_kwargs, non_empty_mask = self.prepare_kwargs(segment, memory, kwargs)
+            if sum(non_empty_mask) == 0:
+                continue
+            
+            if self.detach_memory(seg_num):
+                memory = memory.detach()
+
+            seg_kwargs['inputs_embeds'][:, self.read_memory_position] = memory[non_empty_mask]
+            seg_kwargs['inputs_embeds'][:, self.write_memory_position] = memory[non_empty_mask]
+            out = self.model(**seg_kwargs)
+            base_model_outputs.append(out)
+            base_model_outputs = base_model_outputs[-1:]
+            
+            memory[non_empty_mask] = out.hidden_states[-1][:, self.write_memory_position]
+
+        self.memory_state = memory
+        
+        out = self.process_outputs(base_model_outputs, kwargs)
+        return out
+
+    def process_outputs(self, model_outputs, kwargs):
+        # if self.num_mem_tokens in {0, None}:
+        #     full_logits = torch.cat([o.logits for o in model_outputs], dim=1)
+        #     truncated_hs = [[lh for lh in o.hidden_states] for o in model_outputs]
+        # else:    
+        #     full_logits = torch.cat([o.logits[:, self.num_mem_tokens:-self.num_mem_tokens] for o in model_outputs], dim=1)
+        #     truncated_hs = [[lh[:, self.num_mem_tokens:-self.num_mem_tokens] for lh in o.hidden_states] for o in model_outputs]
+        # full_hidden_states = tuple([torch.cat(layer_hs, dim=1) for layer_hs in zip(*truncated_hs)])
+
+        full_logits = model_outputs[-1].logits[:, self.num_mem_tokens:-self.num_mem_tokens]
+
+        rmt_out = CausalLMOutputWithCrossAttentions()
+        full_labels = kwargs.get('labels')[:, -full_logits.shape[1]:]
+        if full_labels is not None:
+            shift_labels = full_labels[..., 1:].contiguous()
+            shift_logits = full_logits[..., :-1, :].contiguous()
+            flat_labels = shift_labels.view(-1)
+            flat_logits = shift_logits.view(-1, shift_logits.size(-1))
+            
+            loss_fct = CrossEntropyLoss()
+            # labels_mask = kwargs.get('labels_mask')
+            # if labels_mask is not None:
+            #     shift_mask = labels_mask[..., :-1].contiguous()
+            #     flat_labels = flat_labels[shift_mask.view(-1)]
+            #     flat_logits = flat_logits[shift_mask.view(-1)]
+                
+            rmt_out['loss'] = loss_fct(flat_logits, flat_labels)
+
+        # rmt_out['logits'] = full_logits
+        # segment_keys = ['loss']#, 'logits']
+        # if kwargs.get('output_attentions'):
+        #     segment_keys.append('attentions')
+        # if kwargs.get('output_hidden_states'):
+        #     segment_keys.append('hidden_states')
+            # rmt_out['hidden_states'] = full_hidden_states
+
+        # for seg_num, out in enumerate(model_outputs):
+        #     for key, value in out.items():
+        #         if any([sk in key for sk in segment_keys]):
+        #             rmt_out[f'{key}_{seg_num}'] = value
+
+        return rmt_out 
+
+# class RMTDecoderMSCPUOffload(RMTDecoderLMHeadMultiSeg):
+#     def forward(self, input_ids, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None, inputs_embeds=None, labels=None, labels_mask=None, output_attentions=None, output_hidden_states=None, return_dict=None):
+#         # return super().forward(input_ids, attention_mask, token_type_ids, position_ids, head_mask, inputs_embeds, labels, labels_mask, output_attentions, output_hidden_states, return_dict)
+#         kwargs = {'attention_mask': attention_mask, 'token_type_ids': token_type_ids,
+#                   'position_ids': position_ids, 'inputs_embeds': inputs_embeds,
+#                   'labels_mask': labels_mask, #'pos_weight': pos_weight,
+#                   'labels': labels, 'output_attentions': output_attentions,
+#                   'output_hidden_states': output_hidden_states, 'return_dict': return_dict,
+#                   }
+
+#         memory = self.set_memory(input_ids.shape)
+#         segmented = self.pad_and_segment(input_ids, labels)
+
+#         base_model_outputs = []
+#         for seg_num, segment in enumerate(zip(*segmented)):
+
+#             seg_kwargs, non_empty_mask = self.prepare_kwargs(segment, memory, kwargs)
+#             if sum(non_empty_mask) == 0:
+#                 continue
+            
+#             if self.detach_memory(seg_num):
+#                 memory = memory.detach()
+
+#             seg_kwargs['inputs_embeds'][:, self.read_memory_position] = memory[non_empty_mask]
+#             seg_kwargs['inputs_embeds'][:, self.write_memory_position] = memory[non_empty_mask]
+#             out = self.model(**seg_kwargs)
+#             self.dict_to_device(out, 'cpu')
+#             base_model_outputs.append(out)
+            
+#             memory[non_empty_mask] = out.hidden_states[-1][:, self.write_memory_position]
+
+#         self.memory_state = memory
+        
+#         self.dict_to_device(kwargs, 'cpu')
+#         out = self.process_outputs(base_model_outputs, kwargs)
+#         return out
     
+#     def drop_hiddens(self, d):
+#         for k in d:
+#             if 'hidden_state' in k or 'past_key_values' in k:
+#                 d[k] = None
 
-
-### Refactor pipeline
-import math
-from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
+#     def dict_to_device(self, d, device='cpu'):
+#         for k in d:
+#             if type(d[k]) == type(tuple()) or d[k] is None:
+#                 continue
+#             if 'loss' in k:
+#                 continue
+#             # print('moving ', k)
+#             d[k] = d[k].to(device)
+    
+# class RMTDecoderScaleMem(RMTDecoderMemoryLayers):
+#    def extend_word_embeddings(self, num_mem_tokens, tokenizer):
+#         vocab_size = self.model.config.vocab_size
+#         extended_vocab_size = vocab_size + num_mem_tokens
+#         self.num_mem_tokens = num_mem_tokens
+#         self.register_buffer('mem_token_ids', torch.arange(vocab_size, vocab_size + num_mem_tokens))
+#         self.model.resize_token_embeddings(extended_vocab_size)
 
 class MemoryCell(torch.nn.Module):
     def __init__(self, base_model, num_mem_tokens):

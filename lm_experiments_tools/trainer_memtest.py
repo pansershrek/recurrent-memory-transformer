@@ -627,10 +627,10 @@ class Trainer:
                         self.tb.add_scalar('gradients_global_norm/iterations', gnorm, self.n_iter)
                         self.tb.add_scalar('gradients_global_norm/samples', gnorm, self.n_iter * self.global_batch_size)
 
-                        if self.n_iter == 0:
-                            mem_usage = get_gpu_memory_usage()
-                            for k in mem_usage:
-                                self.tb.add_scalar(f'{k}/train', mem_usage[k], self.n_iter)
+                        # if self.n_iter == 0:
+                        mem_usage = get_gpu_memory_usage()
+                        for k in mem_usage:
+                            self.tb.add_scalar(f'{k}/train', mem_usage[k], self.n_iter)
 
             # validation
             if self.valid_dataloader is not None and self.n_iter % self.args.valid_interval == 0:
@@ -690,7 +690,9 @@ class Trainer:
 
         pbar = tqdm(total=n_valid_batches, desc='Validation', disable=(hvd.rank() != 0))
         for batch in dataloader:
+            iteration_start = time.time()
             batch_metrics, batch_metrics_data = self.step(batch, is_train_mode=False)
+            iteration_time = time.time() - iteration_start
             self._add_batch_metrics(batch_metrics, split=split)
             if self.keep_for_metrics_fn and self.metrics_fn:
                 self._add_metrics_data(batch_metrics_data, split=split)
@@ -706,10 +708,12 @@ class Trainer:
                     self.tb.add_scalar(f'{k}/iterations/{split}', metrics[k], self.n_iter)
                     self.tb.add_scalar(f'{k}/samples/{split}', metrics[k], self.n_iter * self.global_batch_size)
 
-                    if self.n_iter == 0:
-                        mem_usage = get_gpu_memory_usage()
-                        for k in mem_usage:
-                            self.tb.add_scalar(f'{k}/train', mem_usage[k], self.n_iter)
+                    self.tb.add_scalar(f'time/iterations/per_iter/{split}', iteration_time, self.n_iter)
+                    self.tb.add_scalar(f'time/samples/per_iter/{split}', iteration_time, self.n_iter * self.global_batch_size)
+
+                    mem_usage = get_gpu_memory_usage()
+                    for k in mem_usage:
+                        self.tb.add_scalar(f'{k}/{split}', mem_usage[k], self.n_iter)
         return metrics
 
     def load(self, load_path, reset_optimizer=False, reset_lr=False, reset_iteration=False) -> None:

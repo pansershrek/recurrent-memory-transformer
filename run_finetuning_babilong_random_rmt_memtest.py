@@ -8,7 +8,7 @@ from pathlib import Path
 from megatron.data.dataset_utils import get_indexed_dataset_
 
 import horovod.torch as hvd
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import torch
 import numpy as np
 from torch.utils.data import DataLoader, DistributedSampler
@@ -20,7 +20,7 @@ from lm_experiments_tools import TrainerArgs
 from lm_experiments_tools.trainer_memtest import Trainer
 
 
-load_dotenv()
+# load_dotenv()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -131,6 +131,7 @@ class MemoryDataset(Dataset):
             ind = np.random.randint(len(self.dataset))
         sample = self.dataset[ind]
         sample['fact'], sample['question'], sample['answer'] = self.generate_qa() 
+        # print("sample['answer']", sample['answer'])
         return sample
     
     def __len__(self):
@@ -152,7 +153,7 @@ class MemoryDataset(Dataset):
         questions = ' '.join(questions)
         answers = ', '.join(answers)
         
-        return facts, questions, answers
+        return [facts], [questions], [answers]
 
 
 if __name__ == '__main__':
@@ -187,7 +188,7 @@ if __name__ == '__main__':
     if hvd.rank() == 0:
         logger.info(f'preparing dataset for babilong')
     
-    train_dataset = MemoryDataset(choices_dict, num_facts=1, split='train', dataset='quality')
+    train_dataset = MemoryDataset(choices_dict, num_facts=1, split='train', dataset='quality', num_samples=10)
     valid_dataset = MemoryDataset(choices_dict, num_facts=1, split='validation', dataset='quality', num_samples=10)
     
     answers = train_dataset.choices_dict['places']
@@ -248,6 +249,8 @@ if __name__ == '__main__':
             # inputs = [b['fact'] + b['input'][:args.input_seq_len * 10] for b in batch]
             inputs = [b['fact'] + ' '.join([b['input']]) * int(np.ceil(args.input_seq_len * 10 / len(b['input']))) for b in batch]
             questions = [b['question'] for b in batch]
+            # print('batch', batch[0]['answer'])
+            # print('questions', questions)
             labels = [b['answer'][:args.target_seq_len * 10] for b in batch]
             if args.input_prefix:
                 inputs = [args.input_prefix + inp for inp in inputs]
@@ -259,6 +262,7 @@ if __name__ == '__main__':
             q_len = questions.shape[1] - 1
             features['input_ids'] = torch.cat([features['input_ids'][:, :max_length - q_len], questions[:, 1:]], dim=1)
             
+            # print('\n\n\n\nlabels', labels)
             labels = np.array([labels_map[t] for t in labels])
             features['labels'] = torch.from_numpy(labels)
             return features

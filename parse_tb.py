@@ -4,7 +4,7 @@ import pandas as pd
 
 from tensorboard.backend.event_processing import event_accumulator
 import pandas as pd
-from tqdm.notebook import tqdm
+# from tqdm.notebook import tqdm
 
 TGT_COLS = ['task_name', 'from_pretrained', 'model_cfg', 'model_cls', 'model_type', 'lr', 'batch_size', 'HVD_SIZE', 'lr_scheduler', 'input_seq_len', 'max_n_segments', 'input_size', 'num_mem_tokens','segment_ordering','padding_side', 'model_path', 'sum_loss', 'inter_layer_memory', 'memory_layers', 'share_memory_layers','reconstruction_loss_coef', 'num_steps']
 
@@ -31,7 +31,8 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
     logs = list(path.glob('**/*tfevents*'))
 
     experiments = []
-    for p in tqdm(logs):
+    for p in logs:
+    # for p in tqdm(logs):
         try:
             expr = json.load(open(p.parent / 'config.json', 'r'))
         except Exception as e:
@@ -243,31 +244,31 @@ df.to_csv(out_path, index=False)
 # df.to_csv(out_path, index=False)
 
 
-# #wikitext
+# # #wikitext
 
-# paths = [
-#         '/home/bulatov/bulatov/RMT_light/runs/lm_long',
-#         ]
+# # paths = [
+# #         '/home/jovyan/rmt/runs/',
+# #         ]
 
-# # path = Path('/home/bulatov/bulatov/RMT_light/runs/')
-# paths = [Path(p) for p in paths]
-# metric_names = ['loss']
-# new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad', 'model_cpt']
-# target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
-# out_path = 'results/wikitext-multiseg.csv'
+# # # path = Path('/home/bulatov/bulatov/RMT_light/runs/')
+# # paths = [Path(p) for p in paths]
+# # metric_names = ['loss']
+# # new_cols = ['model_cpt', 'backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad', 'model_cpt', 'vary_n_segments']
+# # target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
+# # out_path = 'results/wikitext.csv'
 
-# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-# df = pd.concat(dfs)
-# df.to_csv(out_path, index=False)
+# # dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# # df = pd.concat(dfs)
+# # df.to_csv(out_path, index=False)
 
 # # arxiv 
 # paths = [
-#         '/home/bulatov/bulatov/RMT_light/runs/arxiv',
+#         '/home/jovyan/rmt/runs/arxiv/',
 #         ]
 
 # paths = [Path(p) for p in paths]
 # metric_names = ['loss']
-# new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']
+# new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
 # target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
 # out_path = 'results/arxiv.csv'
 
@@ -284,3 +285,19 @@ df.to_csv(out_path, index=False)
 # out_path = 'results/quality_new.csv'
 
 # parse_to_csv(path, out_path, target_cols, metric_names)
+
+
+# memtest
+paths = [
+        '/home/jovyan/rmt/runs/memtest/arxiv/',
+        ]
+
+paths = [Path(p) for p in paths]
+metric_names = ['loss'] + [f'used_memory_gpu_{i}' for i in range(8)]
+new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
+target_cols = TGT_COLS + ['time'] + new_cols
+out_path = 'results/memtest.csv'
+
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)
