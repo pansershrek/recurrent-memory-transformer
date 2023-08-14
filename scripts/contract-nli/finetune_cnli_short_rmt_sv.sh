@@ -13,19 +13,19 @@ BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=contract_nli
 METRIC=exact_match
 
-ITERS=10000
+ITERS=5000
 TBS=128
 
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(1 1 1)
-MEMORY_SIZES=(10 0 5)
-BSS=(32 32 32)
+MAX_N_SEGMENTSS=(1)
+MEMORY_SIZES=(5)
+BSS=(16)
 
 for N in 1
 do
-
+    
 for MODEL_NAME in gpt2
 do
 
@@ -51,7 +51,7 @@ echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_scrolls_rmt_decoder_refactor.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}_bptt-${K2}/run_$N \
+        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((MAX_N_SEGMENTS-1))-${MAX_N_SEGMENTS}/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
@@ -65,12 +65,12 @@ horovodrun --gloo -np $NP python run_finetuning_scrolls_rmt_decoder_refactor.py 
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --iters $ITERS \
         --use_generate_on_valid \
+        --save_best \
         --k2 $K2 \
         --optimizer AdamW  --weight_decay 0.001 \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
         --data_n_workers 2 \
         --log_interval $(($ITERS/100)) --valid_interval $(($ITERS/10)) \
-        --optimize_metric $METRIC --optimize_mode max \
         --show_valid_examples 5 \
         --early_stopping_patience 15 \
         --seed $(($N+42)) \

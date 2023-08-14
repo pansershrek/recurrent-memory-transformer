@@ -95,9 +95,23 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 
 # parse_to_csv(path, out_path, target_cols, metric_names)
 
-# # CNLI
+# # # CNLI
+
+# paths = ['/home/bulatov/bulatov/RMT_light/runs/contract_nli',
+#         ]         
+         
+# paths = [Path(p) for p in paths]
+# metric_names = ['exact_match', "loss"]
+# target_cols = TGT_COLS + ['best_valid_exact_match', 'best_valid_loss']
+# out_path = 'results/contract_nli_decoder.csv'
+
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
 
 
+
+# CNLI-archive
 # paths = ['/home/bulatov/bulatov/RMT_light/runs/framework/contract_nli',
 #          '/home/bulatov/bulatov/RMT_light/runs/test/contract_nli'
 #         ]         
@@ -141,23 +155,41 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 # df.to_csv(out_path, index=False)
 
 
-# # Babi-long
+# # Babi-long compare to curriculum
 
 # paths = [
 #         # '/home/bulatov/bulatov/RMT_light/runs/framework/babilong',
-#         '/home/bulatov/bulatov/RMT_light/runs/curriculum_task/babilong',
+#         '/home/bulatov/bulatov/RMT_light/runs/compare_curriculum/babilong',
 #         # '/home/bulatov/bulatov/RMT_light/runs/curriculum/babilong'
 #         ]
 
-# # path = Path('/home/bulatov/bulatov/RMT_light/runs/')
 # paths = [Path(p) for p in paths]
 # metric_names = ['exact_match']
 # target_cols = TGT_COLS + ['best_valid_exact_match']
-# out_path = 'results/babilong.csv'
+# out_path = 'results/babilong_compare_curriculum.csv'
 
 # dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
 # df = pd.concat(dfs)
 # df.to_csv(out_path, index=False)
+
+
+# Babi-long
+
+paths = [
+        # '/home/bulatov/bulatov/RMT_light/runs/framework/babilong',
+        '/home/bulatov/bulatov/RMT_light/runs/curriculum_task/babilong',
+        # '/home/bulatov/bulatov/RMT_light/runs/curriculum/babilong'
+        ]
+
+# path = Path('/home/bulatov/bulatov/RMT_light/runs/')
+paths = [Path(p) for p in paths]
+metric_names = ['exact_match']
+target_cols = TGT_COLS + ['best_valid_exact_match']
+out_path = 'results/babilong.csv'
+
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)
 
 
 # # Babi-long random position
@@ -211,22 +243,22 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 # df.to_csv(out_path, index=False)
 
 
-#wikitext
+# #wikitext
 
-paths = [
-        '/home/bulatov/bulatov/RMT_light/runs/lm_long',
-        ]
+# paths = [
+#         '/home/bulatov/bulatov/RMT_light/runs/lm_long',
+#         ]
 
-# path = Path('/home/bulatov/bulatov/RMT_light/runs/')
-paths = [Path(p) for p in paths]
-metric_names = ['loss']
-new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad', 'model_cpt']
-target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
-out_path = 'results/wikitext-multiseg.csv'
+# # path = Path('/home/bulatov/bulatov/RMT_light/runs/')
+# paths = [Path(p) for p in paths]
+# metric_names = ['loss']
+# new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad', 'model_cpt']
+# target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
+# out_path = 'results/wikitext-multiseg.csv'
 
-dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-df = pd.concat(dfs)
-df.to_csv(out_path, index=False)
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
 
 # # arxiv 
 # paths = [

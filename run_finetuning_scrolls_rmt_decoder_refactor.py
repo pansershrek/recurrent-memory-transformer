@@ -19,7 +19,7 @@ from huggingface_hub import hf_hub_download
 from sklearn.metrics import f1_score, accuracy_score
 
 from lm_experiments_tools import TrainerArgs
-from lm_experiments_tools.trainer import Trainer
+from lm_experiments_tools.trainer_dec import Trainer
 
 from torch.nn.utils.rnn import pad_sequence
 from lm_experiments_tools.lm_datasets import get_lm_datasets
@@ -69,7 +69,7 @@ parser.add_argument('--target_seq_len', type=int, default=16, help='target sequn
 parser.add_argument('--data_n_workers', type=int, default=2, help='number of dataloader workers (default: 2)')
 
 parser.add_argument('--input_prefix', type=str, default='', help='add task prefix to an input string (default: "")')
-parser.add_argument('--sliding_window', action='store_true', help='use slinding window attentinon mask, '
+parser.add_argument('--sliding_window', action='store_true', help='use slinding window attention mask, '
                     'eval on last segment only', default=False)
 
 # model args
@@ -77,9 +77,9 @@ parser.add_argument('--from_pretrained', type=str, help='model name in HF Model 
 parser.add_argument('--model_cfg', type=str, help='path to model configuration file (default: "")')
 parser.add_argument('--model_cls', type=str, default='transformers:BertForPreTraining',
                     help='model class name to use (default: transformers:BertForPreTraining)')
+parser.add_argument('--memory_cell_cls', type=str, default=None, help='cell class for RMT')
+parser.add_argument('--recurrent_wrapper_cls', type=str, default=None, help='recurrent wrapper class for RMT')
 parser.add_argument('--model_cpt', type=str, default=None, help='pretrained model checkpoint path')
-parser.add_argument('--backbone_cls', type=str, default=None,
-                    help='backbone class name to use for RMT')
 parser.add_argument('--model_type', type=str, default='encoder-decoder',
                     help='model type, encoder, encoder-decoder, decoder, affects preprocessing '
                          '(default: encoder-decoder)')
@@ -88,24 +88,25 @@ parser.add_argument('--model_type', type=str, default='encoder-decoder',
 # Aydar # RMT args 
 parser.add_argument('--input_size', type=int, default=None, help='maximal input size of the backbone model')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
-parser.add_argument('--xl_cache_size', type=int, default=None, help='size of Transformer-XL -like cache')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
-parser.add_argument('--sum_loss', action='store_true', default=False,
-                    help='with this flag task loss from all segments is summed')
-parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
-parser.add_argument('--segment_ordering', type=str, help='segment order', default='regular',
-                    choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
-parser.add_argument('--memory_forward_func', type=str, help='path to memory forward funсtion script', default=None)
-parser.add_argument('--memory_layers', type=str, help='memory-augmented layer inds or "all" for all layers', default=None)
-parser.add_argument('--share_memory_layers', action='store_true', help='share weights of memory layers', default=False)
-parser.add_argument('--reconstruction_loss_coef', type=float, default=None,
-                    help='reconstuction loss ratio in total loss')
-# parser.add_argument('--segment_ordering', type=str,help='????', default='regular',
+parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
+parser.add_argument('--segment_alignment', type=str, default=None, help="How to align segments when splitting input")
+# parser.add_argument('--sum_loss', action='store_true', default=False,
+#                     help='with this flag task loss from all segments is summed')
+# parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
+# parser.add_argument('--segment_ordering', type=str, help='segment order', default='regular',
 #                     choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
-parser.add_argument('--retain_graph', action='store_true', help='Retain computation graph during backward pass', default=False)
-parser.add_argument('--use_truncated_backward', action='store_true', default=False,
-                    help='whether to use RMT truncated bptt method in backward')
-parser.add_argument('--k1', type=int, default=-1, help='(not implemented) If not -1, gradient update is done each k1 segments')
+# parser.add_argument('--memory_forward_func', type=str, help='path to memory forward funсtion script', default=None)
+# parser.add_argument('--memory_layers', type=str, help='memory-augmented layer inds or "all" for all layers', default=None)
+# parser.add_argument('--share_memory_layers', action='store_true', help='share weights of memory layers', default=False)
+# parser.add_argument('--reconstruction_loss_coef', type=float, default=None,
+#                     help='reconstuction loss ratio in total loss')
+# # parser.add_argument('--segment_ordering', type=str,help='????', default='regular',
+# #                     choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
+# parser.add_argument('--retain_graph', action='store_true', help='Retain computation graph during backward pass', default=False)
+# parser.add_argument('--use_truncated_backward', action='store_true', default=False,
+#                     help='whether to use RMT truncated bptt method in backward')
+# parser.add_argument('--k1', type=int, default=-1, help='(not implemented) If not -1, gradient update is done each k1 segments')
 parser.add_argument('--k2', type=int, default=-1, help='number of last segments used by backward')
 parser.add_argument('--freeze_model_weights', action='store_true', default=False,
                     help='Stop training all model weights except memory layers')
@@ -199,67 +200,76 @@ if __name__ == '__main__':
     import os
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     if args.model_type == 'encoder-decoder':
-        global_attention_first_token = False  # should be True for LED
-        encode_plus_kwargs = {'truncation': True, 'padding': 'longest', 'pad_to_multiple_of': 1}
-        # generate_kwargs = {'max_length': args.target_seq_len, 'min_length': args.target_seq_len}
-        generate_kwargs = {}
+        raise NotImplementedError
+        # global_attention_first_token = False  # should be True for LED
+        # encode_plus_kwargs = {'truncation': True, 'padding': 'longest', 'pad_to_multiple_of': 1}
+        # # generate_kwargs = {'max_length': args.target_seq_len, 'min_length': args.target_seq_len}
+        # generate_kwargs = {}
 
-        def collate_fn(batch):
-            # cut too long strings because they may slow down tokenization
-            inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
-            if 'outputs' in batch[0]:
-                # if we have more than 1 label per example (only in valid) take only one of them
-                # to compute loss on valid
-                labels = [b['outputs'][0][:args.target_seq_len * 10] for b in batch]
-            else:
-                labels = [b['output'][:args.target_seq_len * 10] for b in batch]
-            if args.input_prefix:
-                inputs = [args.input_prefix + inp for inp in inputs]
-            features = tokenizer.batch_encode_plus(list(inputs), max_length=args.input_seq_len, return_tensors='pt',
-                                                   **encode_plus_kwargs)
-            with tokenizer.as_target_tokenizer():
-                labels = tokenizer.batch_encode_plus(list(labels), max_length=args.target_seq_len, return_tensors='pt',
-                                                     **encode_plus_kwargs).input_ids
-            labels[labels == tokenizer.pad_token_id] = -100
-            features['labels'] = labels
-            features['id'] = [b['id'] for b in batch]
-            if 'outputs' in batch[0]:
-                features['target_text'] = [b['outputs'] for b in batch]
-            else:
-                features['target_text'] = [b['output'] for b in batch]
-            if 'global_attention_mask' in features:
-                raise RuntimeError('What global attention mask for Longformer and LongformerEncoder-Decoder should be?')
-            return features
+        # def collate_fn(batch):
+        #     # cut too long strings because they may slow down tokenization
+        #     inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
+        #     if 'outputs' in batch[0]:
+        #         # if we have more than 1 label per example (only in valid) take only one of them
+        #         # to compute loss on valid
+        #         labels = [b['outputs'][0][:args.target_seq_len * 10] for b in batch]
+        #     else:
+        #         labels = [b['output'][:args.target_seq_len * 10] for b in batch]
+        #     if args.input_prefix:
+        #         inputs = [args.input_prefix + inp for inp in inputs]
+        #     features = tokenizer.batch_encode_plus(list(inputs), max_length=args.input_seq_len, return_tensors='pt',
+        #                                            **encode_plus_kwargs)
+        #     with tokenizer.as_target_tokenizer():
+        #         labels = tokenizer.batch_encode_plus(list(labels), max_length=args.target_seq_len, return_tensors='pt',
+        #                                              **encode_plus_kwargs).input_ids
+        #     labels[labels == tokenizer.pad_token_id] = -100
+        #     features['labels'] = labels
+        #     features['id'] = [b['id'] for b in batch]
+        #     if 'outputs' in batch[0]:
+        #         features['target_text'] = [b['outputs'] for b in batch]
+        #     else:
+        #         features['target_text'] = [b['output'] for b in batch]
+        #     if 'global_attention_mask' in features:
+        #         raise RuntimeError('What global attention mask for Longformer and LongformerEncoder-Decoder should be?')
+        #     return features
 
     elif args.model_type == 'encoder' and args.task_name == 'contract_nli':
-        if args.use_generate_on_valid:
-            raise RuntimeError('use_generate_on_valid should be set to False for encoder-only models')
+        raise NotImplementedError
+        # if args.use_generate_on_valid:
+        #     raise RuntimeError('use_generate_on_valid should be set to False for encoder-only models')
 
-        encode_plus_kwargs = {'max_length': args.input_seq_len,
-                              'truncation': True,
-                              'padding': 'longest',
-                              'pad_to_multiple_of': 1}
-        generate_kwargs = {}
-        labels_map = {'Contradiction': 0, 'Entailment': 1, 'Not mentioned': 2}
-        num_labels = len(labels_map)
+        # encode_plus_kwargs = {'max_length': args.input_seq_len,
+        #                       'truncation': True,
+        #                       'padding': 'longest',
+        #                       'pad_to_multiple_of': 1}
+        # generate_kwargs = {}
+        # labels_map = {'Contradiction': 0, 'Entailment': 1, 'Not mentioned': 2}
+        # num_labels = len(labels_map)
 
-        def collate_fn(batch):
-            # cut too long strings because they may slow down tokenization
-            inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
-            labels = [b['output'][:args.target_seq_len * 10] for b in batch]
-            if args.input_prefix:
-                inputs = [args.input_prefix + inp for inp in inputs]
-            features = tokenizer.batch_encode_plus(list(inputs), return_tensors='pt', **encode_plus_kwargs)
-            labels = np.array([labels_map[t] for t in labels])
-            features['labels'] = torch.from_numpy(labels)
-            return features
+        # def collate_fn(batch):
+        #     # cut too long strings because they may slow down tokenization
+        #     inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
+        #     labels = [b['output'][:args.target_seq_len * 10] for b in batch]
+        #     if args.input_prefix:
+        #         inputs = [args.input_prefix + inp for inp in inputs]
+        #     features = tokenizer.batch_encode_plus(list(inputs), return_tensors='pt', **encode_plus_kwargs)
+        #     labels = np.array([labels_map[t] for t in labels])
+        #     features['labels'] = torch.from_numpy(labels)
+        #     return features
 
     elif args.model_type == 'decoder':
         from torch.nn.utils.rnn import pad_sequence
 
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.add_tokens('[GEN]', special_tokens=True)
+        # tokenizer.pad_token = tokenizer.eos_token
+        # tokenizer.pad_token_id = tokenizer.eos_token
+        tokenizer.add_special_tokens({'additional_special_tokens': ['[GEN]', '[PAD]']})
         gen_token = tokenizer.encode('[GEN]')[0]
+        tokenizer.pad_token_id = tokenizer.encode('[PAD]')[0]
+        id_pad_value = tokenizer.pad_token_id
+
+        block_size = args.input_size
+        if args.num_mem_tokens not in {0, None}:
+            block_size -= 2 * args.num_mem_tokens
 
         def collate_fn(batch):
             inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
@@ -271,20 +281,60 @@ if __name__ == '__main__':
 
             full_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 1] + [gen_token] + l) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
             full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
+
+            gen_inputs = [torch.tensor(i[:args.input_seq_len - 1] + [gen_token]) for i in inputs['input_ids']]
+            gen_inputs = pad_sequence(gen_inputs, padding_value=tokenizer.pad_token_id).T
             
             labels_mask = torch.zeros_like(full_inputs).bool()
             for i, l in enumerate(labels['input_ids']):
                 labels_mask[i, -len(l) -1:] = True
 
             collated['input_ids'] = collated['labels'] = full_inputs
+            collated['input_ids_generate'] = gen_inputs
             collated['labels_mask'] = labels_mask
-            collated['attention_mask'] = collated['input_ids'] != tokenizer.pad_token_id
+            collated['attention_mask'] = (collated['input_ids'] != id_pad_value).bool()
 
+            collated['id'] = [b['id'] for b in batch]
+            # if 'outputs' in batch[0]:
+            #     collated['target_text'] = [b['outputs'] for b in batch]
+            # else:
+            collated['target_text'] = [b['output'] for b in batch]
             return collated
+        # def collate_train(batch):
+        #     inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
+        #     labels = [b['output'][:args.input_seq_len * 10] for b in batch]
+
+        #     collated = {}
+        #     inputs = tokenizer.batch_encode_plus(list(inputs), padding=False)
+        #     labels = tokenizer.batch_encode_plus(list(labels), padding=False)
+
+        #     full_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 1] + [gen_token] + l) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
+        #     full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
+            
+        #     labels_mask = torch.zeros_like(full_inputs).bool()
+        #     for i, l in enumerate(labels['input_ids']):
+        #         labels_mask[i, -len(l) -1:] = True
+
+        #     collated['input_ids'] = collated['labels'] = full_inputs
+        #     collated['labels_mask'] = labels_mask
+        #     collated['attention_mask'] = (collated['input_ids'] != id_pad_value).bool()
+        #     return collated
+
+        # def collate_valid(batch):
+        #     inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
+
+        #     collated = {}
+        #     inputs = tokenizer.batch_encode_plus(list(inputs), padding=False)
+        #     full_inputs = [torch.tensor(i[:args.input_seq_len - 1] + [gen_token]) for i in inputs['input_ids']]
+        #     full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
+            
+        #     collated['input_ids'] = full_inputs
+        #     collated['attention_mask'] = (collated['input_ids'] != id_pad_value).bool()
+        #     collated['target_text'] = [b['output'] for b in batch]
+        #     return collated
             
     else:
-        raise NotImplementedError('only encoder-decoder models are supported for scrolls datasets or '
-                                  'encoder models only for contract_nli task')
+        raise NotImplementedError(f'Unknown model type {args.model_type}')
 
     # get train dataset
     if hvd.rank() == 0:
@@ -299,6 +349,7 @@ if __name__ == '__main__':
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
     train_dataloader = DataLoader(train_dataset, batch_size=per_worker_batch_size, sampler=train_sampler,
                                   collate_fn=collate_fn, **kwargs)
+                                #   collate_fn=collate_train, **kwargs)
     # get validation dataset
     valid_dataloader = None
     if hvd.rank() == 0:
@@ -309,11 +360,13 @@ if __name__ == '__main__':
     valid_sampler = DistributedSampler(valid_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
     valid_dataloader = DataLoader(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
                                   collate_fn=collate_fn, **kwargs)
+                                #   collate_fn=collate_valid, **kwargs)
     if args.valid_interval is None:
         args.valid_interval = args.log_interval
 
     # define model
-    model_cls = get_cls_by_name(args.backbone_cls)
+    model_cls = get_cls_by_name(args.model_cls)
+
     if hvd.rank() == 0:
         logger.info(f'Using model class: {model_cls}')
     if not args.from_pretrained:
@@ -324,58 +377,60 @@ if __name__ == '__main__':
     else:
         if hvd.rank() == 0:
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
-        
-        if args.model_type == 'encoder' and args.task_name == 'contract_nli':
-            model = model_cls.from_pretrained(args.from_pretrained, num_labels=num_labels)
-        else:
-            model = model_cls.from_pretrained(args.from_pretrained)
+        model = model_cls.from_pretrained(args.from_pretrained)
 
-    # Aydar # Pass memory settings to pretrained model
+    ## add [GEN] token
     model.resize_token_embeddings(len(tokenizer))
-    if args.num_mem_tokens is not None:
-        if args.memory_forward_func is not None:
-            args.memory_forward_func = get_cls_by_name(args.memory_forward_func)
-
-        rmt_config = {
-            'num_mem_tokens': args.num_mem_tokens, 
-            'max_n_segments': args.max_n_segments,
-            # 'segment_ordering': args.segment_ordering,
-            'input_size': args.input_size,
-            'k1': args.k1, 'k2': args.k2,
-            'sum_loss': args.sum_loss,
-            'tokenizer': tokenizer,
-            'memory_forward_func': args.memory_forward_func,
-            'memory_layers': args.memory_layers,
-            'share_memory_layers': args.share_memory_layers,
-            'reconstruction_loss_coef': args.reconstruction_loss_coef,
-        }
-        rmt_cls = get_cls_by_name(args.model_cls)
+    
+    ## load cpt of backbone model
+    if args.backbone_cpt:
+        backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
+        cpt = torch.load(backbone_cpt, map_location='cpu')
+        model.load_state_dict(cpt['model_state_dict'], strict=False)
         if hvd.rank() == 0:
-            logger.info(f'Wrapping in: {rmt_cls}')
-        
-        model = rmt_cls(model, **rmt_config)
+            logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
 
-        ## turn on memory resetting on validation
-        model.rmt_config['keep_memory'] = False
-        # model.rmt_config['keep_memory'] = args.keep_memory
+    # Pass memory settings to pretrained model
+    if args.num_mem_tokens is not None:
+        memory_cell_cls = get_cls_by_name(args.memory_cell_cls)
+        recurrent_wrapper_cls = get_cls_by_name(args.recurrent_wrapper_cls)
+        if hvd.rank() == 0:
+            logger.info(f'Wrapping in: {memory_cell_cls} and {recurrent_wrapper_cls}')
+        
+        
+        cell = memory_cell_cls(model, args.num_mem_tokens)
+        model = recurrent_wrapper_cls(cell, 
+                                      segment_size=block_size,
+                                      max_n_segments=args.max_n_segments, 
+                                      vary_n_segments=args.vary_n_segments,
+                                      k2=args.k2,
+                                      segment_alignment=args.segment_alignment
+        )
+                                    
 
         ## load cpt of rmt
         if args.model_cpt:
             model_cpt = os.path.join(args.model_cpt, "model_best.pth")
             cpt = torch.load(model_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'])
+            model.load_state_dict(cpt['model_state_dict'], strict=False)
             if hvd.rank() == 0:
                 logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
 
-        if args.freeze_model_weights:
-            for n, p in model.named_parameters():
-                # if 'memory' not in n and 'wte' not in n:
-                if 'memory' not in n:
-                    p.requires_grad = False
-            if hvd.rank() == 0:
-                logger.info(f'Frozen moodel weights')
-                logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
+    if args.freeze_model_weights:
+        for n, p in model.named_parameters():
+            # if 'memory' not in n and 'wte' not in n:
+            if 'memory' not in n and 'lora' not in n:
+                p.requires_grad = False
+        if hvd.rank() == 0:
+            logger.info(f'Frozen moodel weights')
+            logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
 
+    # # fix the not-contiguous error with loralib and horovod
+    # def make_contiguous(module):
+    #     with torch.no_grad():
+    #         for param in module.parameters():
+    #             param.set_(param.contiguous())
+    # make_contiguous(model)
     
     # define optimizer
     optimizer_cls = get_optimizer(args.optimizer)
@@ -404,14 +459,18 @@ if __name__ == '__main__':
             data['labels'] = batch['target_text']
 
             data['generation_outputs'] = output['generation_outputs']
-        if args.model_type == 'encoder':
+            # if 'labels_mask' in batch:
+            #     data['generation_outputs'] = [data['generation_outputs'][i, mask] for i, mask in enumerate(batch['labels_mask'])]
+        # if args.model_type == 'encoder':
             
             ##### booydar
-            data['labels'] = batch['labels']
-            for key in batch.keys():
-                if 'loss' in key: 
-                    data[key] = batch[key]
-            data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
+            # data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
+        # data['labels'] = batch['labels']
+        for key in batch.keys():
+            if 'loss' in key: 
+                data[key] = batch[key]
+        # else:
+
         return data
 
     # HF datasets can compute metrics on each gpu process and then aggregate them on process with rank 0
@@ -435,23 +494,31 @@ if __name__ == '__main__':
             # replace -100 with pad token in labels
             y = data['labels']
             p = tokenizer.batch_decode(data['generation_outputs'], skip_special_tokens=True)
+
+            metrics['exact_match'] = np.mean([y_ == p_[:len(y_)] for p_, y_ in zip (p, y)])
+            # preds = tokenizer.batch_decode(data['generation_outputs'], skip_special_tokens=False)
+            # p = [p[:p.index(tokenizer.eos_token)] if tokenizer.eos_token in p else p for p in preds]
             if hvd.rank() == 0 and args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
                     logger.info(f'y: {y[i]}')
                     logger.info(f'p: {p[i]}')
                     logger.info(f'p ids: {data["generation_outputs"][i]}')
+                    # logger.info('\n'.join([(y_, p_[:len(y_)], y_==p_[:len(y_)]) for p_, y_ in zip (p, y[:30])]))
+
                     logger.info('-' * 50)
             # todo: do we need to better clean P to remove tokens after eos? not remove special tokens only
-        elif args.model_type == 'encoder':
-            y, p = data['labels'], data['predictions']
+        # elif args.model_type == 'encoder':
+        #     y, p = data['labels'], data['predictions']
 
-        if y is not None and p is not None:
+        # if y is not None and p is not None:
             # if args.model_type == 'encoder-decoder':
-            if not isinstance(y[0], list):
-                y = [[_y] for _y in y]
-            result = scrolls_metric.compute(predictions=p, references=y)
-            for metric_name in task_to_metric[args.task_name]:
-                metrics[metric_name] = result[metric_name]
+            # if not isinstance(y[0], list):
+                # y = [[_y] for _y in y]
+            # result = scrolls_metric.compute(predictions=p, references=y)
+            # for metric_name in task_to_metric[args.task_name]:
+            #     metrics[metric_name] = result[metric_name]
+
+            # metrics['exact_match'] = np.mean([y_ == p_[:len(y_)] for p_, y_ in zip (p, y)])
             # elif args.model_type == 'encoder' and args.task_name == 'contract_nli':
             #     metrics['exact_match'] = accuracy_score(y, p) * 100
             #     metrics['f1_micro'] = f1_score(y, p, average='micro')
@@ -463,7 +530,7 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs={})
+                      generate_kwargs={'pad_token_id': tokenizer.pad_token_id})
 
     if not args.validate_only:
         # train loop

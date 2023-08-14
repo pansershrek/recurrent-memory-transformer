@@ -10,7 +10,7 @@ from itertools import chain
 from megatron.data.dataset_utils import get_indexed_dataset_
 
 import horovod.torch as hvd
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import torch
 import numpy as np
 import datasets
@@ -24,7 +24,7 @@ from lm_experiments_tools.trainer import Trainer
 
 from torch.nn.utils.rnn import pad_sequence
 from lm_experiments_tools.lm_datasets import get_lm_datasets
-load_dotenv()
+# load_dotenv()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -162,7 +162,9 @@ if __name__ == '__main__':
     if args.xl_cache_size is not None:
         block_size -= args.xl_cache_size
     history_size = args.input_seq_len - block_size
-    history_n_segments = args.max_n_segments - 1 - args.noise_n_segments
+    history_n_segments = args.max_n_segments - 1
+    max_n_segments = args.max_n_segments + args.noise_n_segments
+    print(f'\n\n\nParameters\nblock_size:{block_size}\nhistory_size:{history_size}\nmax_n_segments:{max_n_segments}\nnoise_n_segments:{args.noise_n_segments}\nhistory_n_segments:{history_n_segments}')
 
     # noise dataset
 
@@ -198,28 +200,6 @@ if __name__ == '__main__':
         result["labels"] = result["input_ids"].copy()
         return result
 
-    # id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-    # def collate_fn_noise(batch):
-    #     input_ids = [torch.tensor(b['input_ids'][::-1]) for b in batch]
-    #     labels = [torch.tensor(b['labels'][::-1]) for b in batch]
-    #     attention_mask = [torch.tensor(b['attention_mask'][::-1]) for b in batch]
-    #     input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T.flip(1)
-    #     labels = pad_sequence(labels, padding_value=-100).T.flip(1)
-    #     attention_mask = pad_sequence(attention_mask, padding_value=0).T.flip(1)
-
-    #     collated = {'input_ids': input_ids,
-    #                 'labels': labels, 
-    #                 'attention_mask': attention_mask}
-        
-    #     if input_ids.shape[1] != block_size:
-    #         labels_mask = torch.ones_like(input_ids, dtype=bool)
-    #         labels_mask[:, :-block_size] = False
-    #         collated['labels_mask'] = labels_mask
-        
-    #     print('\n\n\nnoise')
-    #     for key in collated:
-    #         print(key, collated[key].shape)
-    #     return collated
 
 
     train_noise_dataset = noise_dataset["train"].map(lambda x: group_texts(x, block_size), 
@@ -244,9 +224,8 @@ if __name__ == '__main__':
             samples = [samples[max({0, i - self.history_n_segments - 1}):i] for i in range(1, len(samples))]
 
             for sample in samples:
-                noise_positions = np.random.choice(range(len(sample)), self.noise_n_segments)
-                # print('noise_positions', noise_positions)
-                for p in noise_positions:
+                for _ in range(self.noise_n_segments):
+                    p = np.random.choice(range(len(sample)))
                     noise_sample = self.noise_dataset[np.random.randint(len(self.noise_dataset))]['input_ids']
                     sample.insert(p, noise_sample)
 
@@ -297,23 +276,13 @@ if __name__ == '__main__':
             labels_mask = torch.ones_like(input_ids, dtype=bool)
             labels_mask[:, :-block_size] = False
             collated['labels_mask'] = labels_mask
-
-        # print('\n\n\ndata')
-        # for key in collated:
-        #     print(key, collated[key].shape)
-        
-        # if collated['labels_mask'].shape[1] != 472:
-        #     print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nlen(batch), [len(b) for b in batch]', len(batch), [len(b) for b in batch])
-        # else:
-        #     print('len(batch), [len(b) for b in batch]', len(batch), [len(b) for b in batch])
-
         
         return collated
 
 
-    train_dataset = load_from_disk('/data/tmp/bulatov_datasets/arxiv_tokenized/train')
-    valid_dataset = load_from_disk('/data/tmp/bulatov_datasets/arxiv_tokenized/valid')
-    test_dataset = load_from_disk('/data/tmp/bulatov_datasets/arxiv_tokenized/test')
+    train_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/tokenized/train')
+    valid_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/tokenized/valid')
+    test_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/tokenized/test')
 
     
     # shuffle train data each epoch (one loop over train_dataset)
@@ -382,7 +351,7 @@ if __name__ == '__main__':
 
         rmt_config = {
             'num_mem_tokens': args.num_mem_tokens, 
-            'max_n_segments': args.max_n_segments,
+            'max_n_segments': max_n_segments,
             'xl_cache_size': args.xl_cache_size,
             # 'segment_ordering': args.segment_ordering,
             'input_size': args.input_size,
@@ -454,7 +423,8 @@ if __name__ == '__main__':
         data = {}
         data['labels'] = batch['labels']
         data['loss'] = output['loss']
-        data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
+        if 'logits' in output:
+            data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
         return data
 
     # HF datasets can compute metrics on each gpu process and then aggregate them on process with rank 0
@@ -473,14 +443,15 @@ if __name__ == '__main__':
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
         metrics = {}
-        y, p = data['labels'], data['predictions']
-        if hvd.rank() == 0 and args.show_valid_examples > 0:
-            for i in range(min(args.show_valid_examples, len(y))):
-                # logger.info(f'y: {tokenizer.decode(y[i])}')
-                # logger.info(f'p: {tokenizer.decode(p[i])}')
-                logger.info(f'y: {y[i]}')
-                logger.info(f'p: {p[i]}')
-                logger.info('-' * 50)
+        if 'predictions' in data:
+            y, p = data['labels'], data['predictions']
+            if hvd.rank() == 0 and args.show_valid_examples > 0:
+                for i in range(min(args.show_valid_examples, len(y))):
+                    # logger.info(f'y: {tokenizer.decode(y[i])}')
+                    # logger.info(f'p: {tokenizer.decode(p[i])}')
+                    logger.info(f'y: {y[i]}')
+                    logger.info(f'p: {p[i]}')
+                    logger.info('-' * 50)
         try:
             perplexity = math.exp(data["loss"].mean())
         except OverflowError:

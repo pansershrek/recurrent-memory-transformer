@@ -20,7 +20,7 @@ from huggingface_hub import hf_hub_download
 from sklearn.metrics import f1_score, accuracy_score
 
 from lm_experiments_tools import TrainerArgs
-from lm_experiments_tools.trainer import Trainer
+from lm_experiments_tools.trainer_memtest import Trainer
 
 from torch.nn.utils.rnn import pad_sequence
 from lm_experiments_tools.lm_datasets import get_lm_datasets
@@ -173,7 +173,7 @@ if __name__ == '__main__':
                 
         def get_samples(self, document):
             input_ids, attention_mask = document['input_ids'], document['attention_mask']
-            samples = [input_ids[max({0, start - self.history_size}): start + self.block_size] for start in range(0, len(input_ids), self.block_size)]
+            samples = [input_ids[max({0, start - self.history_size}): start + self.block_size] for start in range(self.history_size, len(input_ids), self.block_size)]
             return samples
         
         def __iter__(self):

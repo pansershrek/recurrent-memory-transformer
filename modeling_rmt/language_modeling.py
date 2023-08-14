@@ -535,6 +535,14 @@ class MemoryCell(torch.nn.Module):
 
         return out, new_memory_state
     
+    def generate(self, input_ids, memory_state, attention_mask, **generate_kwargs):
+        if memory_state is None:
+            memory_state = self.set_memory(input_ids.shape)
+
+        seg_kwargs = self.process_input(input_ids, memory_state, attention_mask=attention_mask)
+        out = self.model.generate(inputs_embeds=seg_kwargs['inputs_embeds'], attention_mask=seg_kwargs['attention_mask'], **generate_kwargs)
+        return out
+
     def process_input(self, input_ids, memory_state, **kwargs):
         seg_kwargs = dict(**kwargs)
 
@@ -575,6 +583,7 @@ class MemoryCell(torch.nn.Module):
         return out, memory_state 
 
 
+import random
 class RecurrentWrapper(torch.nn.Module):
     def __init__(self, memory_cell, **rmt_kwargs):
         super().__init__()
@@ -597,7 +606,7 @@ class RecurrentWrapper(torch.nn.Module):
                                    output_hidden_states=output_hidden_states)
         return out
     
-    def generate(self, input_ids, attention_mask):
+    def generate(self, input_ids, attention_mask, **generate_kwargs):
         memory_state = None
         segmented = self.segment(input_ids=input_ids, attention_mask=attention_mask)
 
@@ -608,7 +617,7 @@ class RecurrentWrapper(torch.nn.Module):
             # self.manage_gradients(memory_state, seg_num)
 
         final_segment = segmented[-1]
-        out = self.memory_cell.generate(**final_segment, memory_state=memory_state)
+        out = self.memory_cell.generate(**final_segment, memory_state=memory_state, **generate_kwargs)
 
         return out
 
@@ -622,6 +631,12 @@ class RecurrentWrapper(torch.nn.Module):
                         segments[s][k] = k_seg
                     else:
                         segments.append({k: k_seg})
+        
+        max_n_segments = self.rmt_config.get('max_n_segments', False)
+        if max_n_segments:
+            if self.rmt_config.get('vary_n_segments', False):
+                max_n_segments = random.randint(0, max_n_segments)
+            segments = segments[:max_n_segments]
 
         return segments
     
@@ -662,6 +677,8 @@ class RecurrentWrapper(torch.nn.Module):
                 flat_logits = flat_logits[shift_mask.view(-1)]
                 
             out['loss'] = loss_fct(flat_logits, flat_labels)
+        else:
+            out['loss'] = 0
 
         out['logits'] = full_logits
         segment_keys = ['loss', 'logits']

@@ -108,7 +108,6 @@ parser.add_argument('--freeze_model_weights', action='store_true', default=False
                     help='Stop training all model weights except memory layers')
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
 
-parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
 
 # tokenizer
 # todo: add wordpiece tokenizers support?
@@ -222,12 +221,6 @@ if __name__ == '__main__':
             labels_mask = torch.ones_like(input_ids, dtype=bool)
             labels_mask[:, :-block_size] = False
             collated['labels_mask'] = labels_mask
-
-        if getattr(args, 'vary_n_segments', False):
-            n_segments = random.randint(0, args.max_n_segments)
-            n_tokens = n_segments * block_size
-            for k in collated:
-                collated[k] = collated[k][:, -n_tokens:]
         
         return collated
 
@@ -291,7 +284,6 @@ if __name__ == '__main__':
         model = model_cls.from_pretrained(args.from_pretrained)
 
     ## load cpt of backbone model
-    # logger.info(f'\n\n\n\n\n Backbone cpt: {args.backbone_cpt}')
     if args.backbone_cpt:
         backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
         cpt = torch.load(backbone_cpt, map_location='cpu')
@@ -330,8 +322,6 @@ if __name__ == '__main__':
         if args.model_cpt:
             model_cpt = os.path.join(args.model_cpt, "model_best.pth")
             cpt = torch.load(model_cpt, map_location='cpu')
-            # for n, p in model.named_parameters():
-            #     print(n)
             model.load_state_dict(cpt['model_state_dict'])
             if hvd.rank() == 0:
                 logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
@@ -364,9 +354,6 @@ if __name__ == '__main__':
                                   weight_decay=args.weight_decay)
     else:
         optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-        
-    if args.model_cpt or args.backbone_cpt:
-        optimizer.load_state_dict(cpt['optimizer_state_dict'])
 
     # for encoder only classification
     def keep_for_metrics_fn(batch, output):
