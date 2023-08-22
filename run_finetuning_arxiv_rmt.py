@@ -78,7 +78,6 @@ parser.add_argument('--model_type', type=str, default='encoder-decoder',
 # Aydar # RMT args 
 parser.add_argument('--input_size', type=int, default=None, help='maximal input size of the backbone model')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
-parser.add_argument('--xl_cache_size', type=int, default=None, help='size of Transformer-XL -like cache')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
 parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
 parser.add_argument('--sum_loss', action='store_true', default=False,
@@ -102,7 +101,6 @@ parser.add_argument('--freeze_model_weights', action='store_true', default=False
                     help='Stop training all model weights except memory layers')
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
 
-parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
 
 # tokenizer
 # todo: add wordpiece tokenizers support?
@@ -172,8 +170,6 @@ if __name__ == '__main__':
     block_size = args.input_size
     if args.num_mem_tokens is not None:
         block_size -= 2 * args.num_mem_tokens
-    if args.xl_cache_size is not None:
-        block_size -= args.xl_cache_size
     history_size = args.input_seq_len - block_size
 
     class segmentDataLoaderOTF(DataLoader):

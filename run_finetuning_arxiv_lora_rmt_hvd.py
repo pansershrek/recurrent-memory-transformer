@@ -140,7 +140,7 @@ if __name__ == '__main__':
     os.chdir(args.working_dir)
     if hvd.rank() == 0:
         logger.info(f'hvd size: {hvd.size()}')
-        logger.info(f'FP16: {args.fp16}')
+        # logger.info(f'FP16: {args.fp16}')
 
     if hvd.rank() == 0 and args.model_path is None:
         logger.warning('model_path is not set: config, logs and checkpoints will not be saved.')
