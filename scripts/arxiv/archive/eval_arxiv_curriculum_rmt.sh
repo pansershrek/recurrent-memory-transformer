@@ -11,24 +11,40 @@ MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
-ITERS=150000
+<<<<<<< HEAD:scripts/arxiv/eval_arxiv_curriculum_rmt.sh
+ITERS=100000
 TBS=128
+=======
+ITERS=10000
+TBS=256
+>>>>>>> 3a155c6c355447797171f2b8687ac45238d3c5c2:scripts/arxiv/archive/eval_arxiv_short_curriculum_rmt-4.sh
 
 TGT_LEN=1024
 INPUT_SIZE=1024
 
-MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 16 32)
-BSS=(16 8 8 4 4 4 4 4 4 2 2 2 2)
+<<<<<<< HEAD:scripts/arxiv/eval_arxiv_curriculum_rmt.sh
+MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 )
+BSS=(16 8 8 4 4 4 4 2 2 2 1 )
 
-MAX_N_SEGMENTSS=(4 5 6 7 8 9 10 16 32)
-BSS=(4 4 4 4 4 4 2 2 2 2)
+MAX_N_SEGMENTSS=(8 9 10 )
+BSS=(2 2 2 1 )
+=======
+MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 16 32 64)
+BSS=(256 256 128 128 64 64 32 32 32 16 16 16 16 8 4)
+>>>>>>> 3a155c6c355447797171f2b8687ac45238d3c5c2:scripts/arxiv/archive/eval_arxiv_short_curriculum_rmt-4.sh
 
-for N in 1
+for N in 4
 do
 
 for MODEL_NAME in gpt2
 do
 
+<<<<<<< HEAD:scripts/arxiv/eval_arxiv_curriculum_rmt.sh
+=======
+for SOURCE_N_SEGMENTS in 8 9 10
+do
+
+>>>>>>> 3a155c6c355447797171f2b8687ac45238d3c5c2:scripts/arxiv/archive/eval_arxiv_short_curriculum_rmt-4.sh
 for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
 do
 MEMORY_SIZE=2
@@ -36,7 +52,7 @@ MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]}
 INPUT_SEQ_LEN=$(((INPUT_SIZE-2*MEMORY_SIZE)*MAX_N_SEGMENTS))
 BS=${BSS[j]}
 
-for SOURCE_N_SEGMENTS in 1
+for SOURCE_N_SEGMENTS in 4
 do
 K2=${SOURCE_N_SEGMENTS}
 

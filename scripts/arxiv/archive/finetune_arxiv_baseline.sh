@@ -11,8 +11,8 @@ BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=arxiv
 
 ITERS=150000
-TBS=32
-BS=8
+TBS=128
+BS=16
 
 TGT_LEN=1024
 INPUT_SEQ_LEN=1024
@@ -21,7 +21,7 @@ INPUT_SIZE=1024
 MAX_N_SEGMENTSS=(1)
 MEMORY_SIZES=(NA)
 
-for N in 1
+for N in 10
 do
 
 for MODEL_NAME in gpt2
@@ -42,7 +42,7 @@ do
 
 echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
-horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
+accelerate launch --num_processes $NP --config_file ./accelerate.yaml  run_finetuning_arxiv_rmt.py \
         --task_name $TASK_NAME \
         --model_path ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_iters${ITERS}_${SEGMENT_ORDERING}/run_$N \
         --from_pretrained $MODEL_NAME \

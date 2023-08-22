@@ -8,25 +8,32 @@ CUDA_LAUNCH_BLOCKING=1
 
 MODEL_TYPE=decoder
 MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
-BACKBONE_CLS=transformers:AutoModelForCausalLM
+BACKBONE_CLS=modeling_gpt2:GPT2LMHeadModel
 TASK_NAME=arxiv
 
 ITERS=10000
 TBS=256
 
-TGT_LEN=128
-INPUT_SIZE=128
+TGT_LEN=1024
+INPUT_SIZE=1024
 
-MAX_N_SEGMENTSS=(3 4 5 6 7 8 9 10 16 32 64)
-BSS=(64 64 32 32 32 16 16 16 16 8 4)
+MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 16 32 64)
+BSS=(128 128 64 64 32 32 32 16 16 16 16 8 4)
 
-for N in 5
+MAX_N_SEGMENTSS=(1 2 3 4 5 6 7 8 9 10 16 32 64)
+BSS=(32 16 16 8 8 8 4 4 4 2 2 2 2 1 1 1)
+
+MAX_N_SEGMENTSS=(1 2 3 4 5 )
+BSS=(32 32 16 8 8 8 8 4 )
+
+
+for N in 1
 do
 
 for MODEL_NAME in gpt2
 do
 
-for SOURCE_N_SEGMENTS in 1 2 3 4 5 6 7
+for SOURCE_N_SEGMENTS in 2 3
 do
 
 for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
@@ -50,11 +57,11 @@ echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_${SOURCE_N_SEGMENTS}-${MAX_N_SEGMENTS}_eval/run_$N \
+        --model_path /home/jovyan/rmt/runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_cv2_${SOURCE_N_SEGMENTS}-${MAX_N_SEGMENTS}_eval_full/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-128-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}/run_$N \
+        --model_cpt /home/jovyan/rmt/runs/${TASK_NAME}/gpt2/linear_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*SOURCE_N_SEGMENTS))-${TGT_LEN}-${SOURCE_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs32_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_cv2_$((SOURCE_N_SEGMENTS-1))-${SOURCE_N_SEGMENTS}/run_$N \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \
