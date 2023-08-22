@@ -429,7 +429,11 @@ if __name__ == '__main__':
         optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         
     if args.model_cpt or args.backbone_cpt:
-        optimizer.load_state_dict(cpt['optimizer_state_dict'])
+        try:
+            optimizer.load_state_dict(cpt['optimizer_state_dict'])
+        except(ValueError):
+            if hvd.rank() == 0:
+                logger.info(f"Error loading optimizer state.")
 
     # for encoder only classification
     def keep_for_metrics_fn(batch, output):

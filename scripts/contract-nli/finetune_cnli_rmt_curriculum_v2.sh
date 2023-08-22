@@ -13,15 +13,15 @@ BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_NAME=contract_nli
 METRIC=exact_match
 
-ITERS=1500
+ITERS=2500
 TBS=128
 
 TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(2 3 4 5 6 7)
-MEMORY_SIZE=2
-BSS=(8 8 8 8 4 4 4 4)
+MAX_N_SEGMENTSS=(2 4 6 8)
+MEMORY_SIZE=5
+BSS=(16 16 8 8 )
 
 for N in 1
 do
@@ -34,7 +34,7 @@ do
 MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]} 
 INPUT_SEQ_LEN=$(((INPUT_SIZE-2*MEMORY_SIZE)*MAX_N_SEGMENTS))
 BS=${BSS[j]}
-K2=${MAX_N_SEGMENTS}
+K2=-1
 
 for SEGMENT_ORDERING in regular
 do
@@ -42,7 +42,7 @@ do
 for SCHEDULER in linear
 do
 
-for LR in 5e-05
+for LR in 1e-05
 do
 
 
@@ -50,13 +50,13 @@ echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_scrolls_rmt_decoder_refactor.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_cv2_$((MAX_N_SEGMENTS-1))-${MAX_N_SEGMENTS}/run_$N \
+        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_cv2_$((MAX_N_SEGMENTSS[j-1]))-${MAX_N_SEGMENTS}/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
         --recurrent_wrapper_cls $RECURRENT_WRAPPER \
         --model_cls $BACKBONE_CLS \
-        --model_cpt ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*(MAX_N_SEGMENTS-1)))-${TGT_LEN}-$((MAX_N_SEGMENTS-1))x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-$((K2-1))_from_cpt_cv2_$((MAX_N_SEGMENTS-2))-$((MAX_N_SEGMENTS-1))/run_$N \
+        --model_cpt ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*(MAX_N_SEGMENTSS[j-1])))-${TGT_LEN}-$((MAX_N_SEGMENTSS[j-1]))x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-$((K2))_from_cpt_cv2_$((MAX_N_SEGMENTSS[j-2]))-$((MAX_N_SEGMENTSS[j-1]))/run_$N \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \
         --target_seq_len $TGT_LEN \

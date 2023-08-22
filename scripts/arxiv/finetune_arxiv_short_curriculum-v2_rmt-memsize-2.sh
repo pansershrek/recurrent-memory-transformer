@@ -11,16 +11,16 @@ MODEL_CLS=modeling_rmt.language_modeling:RMTDecoderLMHeadMultiSeg
 BACKBONE_CLS=modeling_gpt2:GPT2LMHeadModel
 TASK_NAME=arxiv
 
-ITERS=100000
-TBS=32
+ITERS=200000
+TBS=256
 
-TGT_LEN=1024
-INPUT_SIZE=1024
+TGT_LEN=128
+INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(4 5 6 7)
-BSS=(4 4 2 2)
+MAX_N_SEGMENTSS=(2)
+BSS=(64)
 
-for MEMORY_SIZE in 2
+for MEMORY_SIZE in 32 64
 do 
 
 for N in 1
@@ -49,11 +49,11 @@ echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ
 echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
 horovodrun --gloo -np $NP python run_finetuning_arxiv_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_cv2_$((MAX_N_SEGMENTS-1))-${MAX_N_SEGMENTS}/run_$N \
+        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_cv2_1-${MAX_N_SEGMENTS}/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --model_cls $MODEL_CLS \
-        --model_cpt ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_$(((INPUT_SIZE-2*MEMORY_SIZE)*(MAX_N_SEGMENTS-1)))-${TGT_LEN}-$((MAX_N_SEGMENTS-1))x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-$((K2-1))_from_cpt_cv2_$((MAX_N_SEGMENTS-2))-$((MAX_N_SEGMENTS-1))/run_1 \
+        --backbone_cpt /home/jovyan/rmt/runs/arxiv/gpt2/lr5e-07_linear_adamw_wd1e-03_128-128-1x128_memNA_bs32_iters1500000_regular_continue/run_3/ \
         --backbone_cls $BACKBONE_CLS \
         --input_seq_len $INPUT_SEQ_LEN \
         --input_size $INPUT_SIZE \

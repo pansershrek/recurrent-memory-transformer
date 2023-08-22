@@ -174,23 +174,23 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 # df.to_csv(out_path, index=False)
 
 
-# Babi-long
+# # Babi-long
 
-paths = [
-        # '/home/bulatov/bulatov/RMT_light/runs/framework/babilong',
-        '/home/bulatov/bulatov/RMT_light/runs/curriculum_task/babilong',
-        # '/home/bulatov/bulatov/RMT_light/runs/curriculum/babilong'
-        ]
+# paths = [
+#         # '/home/bulatov/bulatov/RMT_light/runs/framework/babilong',
+#         '/home/bulatov/bulatov/RMT_light/runs/curriculum_task/babilong',
+#         # '/home/bulatov/bulatov/RMT_light/runs/curriculum/babilong'
+#         ]
 
-# path = Path('/home/bulatov/bulatov/RMT_light/runs/')
-paths = [Path(p) for p in paths]
-metric_names = ['exact_match']
-target_cols = TGT_COLS + ['best_valid_exact_match']
-out_path = 'results/babilong.csv'
+# # path = Path('/home/bulatov/bulatov/RMT_light/runs/')
+# paths = [Path(p) for p in paths]
+# metric_names = ['exact_match']
+# target_cols = TGT_COLS + ['best_valid_exact_match']
+# out_path = 'results/babilong.csv'
 
-dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-df = pd.concat(dfs)
-df.to_csv(out_path, index=False)
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
 
 
 # # Babi-long random position
@@ -261,20 +261,20 @@ df.to_csv(out_path, index=False)
 # # df = pd.concat(dfs)
 # # df.to_csv(out_path, index=False)
 
-# # arxiv 
-# paths = [
-#         '/home/jovyan/rmt/runs/arxiv/',
-#         ]
+# arxiv 
+paths = [
+        '/home/jovyan/rmt/runs/arxiv/',
+        ]
 
-# paths = [Path(p) for p in paths]
-# metric_names = ['loss']
-# new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
-# target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
-# out_path = 'results/arxiv.csv'
+paths = [Path(p) for p in paths]
+metric_names = ['loss']
+new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
+target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
+out_path = 'results/arxiv.csv'
 
-# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-# df = pd.concat(dfs)
-# df.to_csv(out_path, index=False)
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)
 
 
 # # quality
@@ -287,17 +287,17 @@ df.to_csv(out_path, index=False)
 # parse_to_csv(path, out_path, target_cols, metric_names)
 
 
-# memtest
-paths = [
-        '/home/jovyan/rmt/runs/memtest/arxiv/',
-        ]
+# # memtest
+# paths = [
+#         '/home/jovyan/rmt/runs/memtest/arxiv/',
+#         ]
 
-paths = [Path(p) for p in paths]
-metric_names = ['loss'] + [f'used_memory_gpu_{i}' for i in range(8)]
-new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
-target_cols = TGT_COLS + ['time'] + new_cols
-out_path = 'results/memtest.csv'
+# paths = [Path(p) for p in paths]
+# metric_names = ['loss'] + [f'used_memory_gpu_{i}' for i in range(8)]
+# new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
+# target_cols = TGT_COLS + ['time'] + new_cols
+# out_path = 'results/memtest.csv'
 
-dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-df = pd.concat(dfs)
-df.to_csv(out_path, index=False)
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
