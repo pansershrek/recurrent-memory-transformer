@@ -14,7 +14,7 @@ import accelerate
 from torch.utils.data import DataLoader
 from datasets import Dataset, load_dataset, load_from_disk
 
-from lm_experiments_tools import Trainer, TrainerArgs
+from lm_experiments_tools.trainer_accelerate import TrainerAccelerate as Trainer, TrainerAccelerateArgs as TrainerArgs
 
 from torch.nn.utils.rnn import pad_sequence
 
