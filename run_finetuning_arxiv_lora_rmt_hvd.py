@@ -109,6 +109,7 @@ parser.add_argument('--freeze_model_weights', action='store_true', default=False
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
 
 parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
+parser.add_argument('--sampling_prob', type=float, default=1, help='Probability of sampling other number of segments')
 
 # tokenizer
 # todo: add wordpiece tokenizers support?
@@ -231,6 +232,10 @@ if __name__ == '__main__':
             collated['labels_mask'] = labels_mask
 
         if getattr(args, 'vary_n_segments', False):
+            if getattr(args, 'sampling_prob', False):
+                random_value = torch.rand((1)).item()
+                if random_value > args.sampling_prob:
+                    return collated
             n_segments = random.randint(0, args.max_n_segments)
             n_tokens = n_segments * block_size
             for k in collated:
@@ -260,8 +265,8 @@ if __name__ == '__main__':
         train_dataloader = None
 
     # get validation dataset
-    # max_samples = 1000 if args.validate_only else 100
-    max_samples = 100
+    max_samples = None if args.validate_only else 100
+    # max_samples = None
     valid_dataloader = None
     if hvd.rank() == 0:
         logger.info(f'preparing validation data')

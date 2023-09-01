@@ -10,21 +10,20 @@ MODEL_TYPE=decoder
 MEMORY_CELL=modeling_rmt.language_modeling:MemoryCell
 RECURRENT_WRAPPER=modeling_rmt.language_modeling:RecurrentWrapper
 BACKBONE_CLS=base_models.modeling_gpt_neox:GPTNeoXForCausalLM
-TASK_NAME=arxiv
+TASK_NAME=pile
 
 ITERS=100000
 TBS=256
 
-TGT_LEN=128
 INPUT_SIZE=128
 
-MAX_N_SEGMENTSS=(2)
-BSS=(64)
+MAX_N_SEGMENTSS=(3 4 5 6 7)
+BSS=(64 64 64 32 32 16 16 )
 
-for MEMORY_SIZE in 4 8 16 32 64
+for MEMORY_SIZE in 5
 do 
 
-for N in 1
+for N in 2
 do
 
 for MODEL_NAME in EleutherAI/pythia-70m-deduped
@@ -33,7 +32,8 @@ do
 for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
 do
 MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]} 
-INPUT_SEQ_LEN=$(((INPUT_SIZE-2*MEMORY_SIZE)*MAX_N_SEGMENTS))
+BLOCK_SIZE=$((INPUT_SIZE-2*MEMORY_SIZE))
+HISTORY_SIZE=$(((MAX_N_SEGMENTS - 1) * BLOCK_SIZE))
 BS=${BSS[j]}
 LR=1e-03
 
@@ -46,25 +46,27 @@ for SCHEDULER in linear
 do
 
 
-echo RUNNING: TASK_NAME SRC_LEN MODEL_NAME MODEL_CLS N_SEG MEMORY_SIZE INPUT_SEQ_LEN LR N
-echo RUNNING: $TASK_NAME $SRC_LEN $MODEL_NAME $MODEL_CLS $MAX_N_SEGMENTS $MEMORY_SIZE $INPUT_SEQ_LEN $LR $N
-accelerate launch --num_processes $NP --config_file ./accel_configs/np-2.yaml --main_process_port 29511 run_finetuning_arxiv_rmt.py \
+echo RUNNING: TASK_NAME MEMORY_SIZE INPUT_SIZE BLOCK_SIZE HISTORY_SIZE N_SEG  MODEL_NAME MODEL_CLS LR N
+echo RUNNING: $TASK_NAME $MEMORY_SIZE $INPUT_SIZE $BLOCK_SIZE $HISTORY_SIZE $MAX_N_SEGMENTS $MODEL_NAME $MODEL_CLS  $LR $N
+accelerate launch --num_processes $NP --config_file ./accelerate.yaml --main_process_port 29509 run_finetuning_pile_rmt.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${INPUT_SEQ_LEN}-${TGT_LEN}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_v2/run_$N \
+        --model_path ../runs/test/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${BLOCK_SIZE}-${HISTORY_SIZE}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_from_cpt_cv2_$((MAX_N_SEGMENTS-1))-$((MAX_N_SEGMENTS))/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
         --recurrent_wrapper_cls $RECURRENT_WRAPPER \
         --model_cls $BACKBONE_CLS \
-        --input_seq_len $INPUT_SEQ_LEN \
+        --model_cpt ../runs/test/${TASK_NAME}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${BLOCK_SIZE}-$((HISTORY_SIZE-BLOCK_SIZE))-$((MAX_N_SEGMENTS-1))x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-$((K2-1))_from_cpt_cv2_$((MAX_N_SEGMENTS-2))-$((MAX_N_SEGMENTS-1))/run_$N \
+        --block_size $BLOCK_SIZE \
+        --history_size $HISTORY_SIZE \
         --input_size $INPUT_SIZE \
-        --target_seq_len $TGT_LEN \
         --num_mem_tokens $MEMORY_SIZE \
         --max_n_segments $MAX_N_SEGMENTS\
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --vary_n_segments \
+        --save_best \
         --iters $ITERS \
-        --k1 -1 --k2 $K2 \
+        --k2 $K2 \
         --optimizer AdamW  --weight_decay 0.001 \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
         --data_n_workers 2 \

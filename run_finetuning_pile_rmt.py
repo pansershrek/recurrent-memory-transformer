@@ -190,7 +190,7 @@ if __name__ == '__main__':
         return True
 
     def tokenization(sample):
-        return tokenizer(sample["text"])
+        return tokenizer.encode(sample["text"])
 
     class BlockDataLoader(DataLoader):
         def __init__(self, dataset, block_size, history_size, max_samples=None, shuffle=False, *args, **kwargs):
@@ -201,7 +201,7 @@ if __name__ == '__main__':
             self.shuffle = shuffle
                 
         def get_samples(self, document):
-            input_ids, attention_mask = document['input_ids'], document['attention_mask']
+            input_ids = tokenizer.encode(document['text'])
             samples = [input_ids[max({0, start - self.history_size}): start + self.block_size] for start in range(0, len(input_ids), self.block_size)]
             return samples
         
@@ -267,10 +267,10 @@ if __name__ == '__main__':
     if min_tokens is not None or max_chars is not None:
         dataset = dataset.filter(lambda sample: filter_by_len(sample, 'text', min_tokens, max_chars))
 
-    dataset = dataset.map(tokenization, batched=True)
+    # dataset = dataset.map(tokenization, batched=True)
 
-    if min_tokens is not None or max_tokens is not None:
-        dataset = dataset.filter(lambda sample: filter_by_len(sample, 'input_ids', min_tokens, max_tokens))
+    # if min_tokens is not None or max_tokens is not None:
+    #     dataset = dataset.filter(lambda sample: filter_by_len(sample, 'input_ids', min_tokens, max_tokens))
 
     train_dataset, valid_dataset, test_dataset = dataset["train"], dataset["validation"], dataset["test"]
 
@@ -359,9 +359,10 @@ if __name__ == '__main__':
 
     ## load cpt of backbone model
     if args.backbone_cpt:
-        backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
+        backbone_cpt = os.path.join(args.backbone_cpt, "model_best/pytorch_model.bin")
+        # model = torch.load(backbone_cpt, map_location='cpu')
         cpt = torch.load(backbone_cpt, map_location='cpu')
-        model.load_state_dict(cpt['model_state_dict'], strict=False)
+        model.load_state_dict(cpt, strict=False)
         logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
 
     # Pass memory settings to pretrained model
@@ -382,9 +383,11 @@ if __name__ == '__main__':
 
         ## load cpt of rmt
         if args.model_cpt:
-            model_cpt = os.path.join(args.model_cpt, "model_best.pth")
+            model_cpt = os.path.join(args.model_cpt, "model_best/pytorch_model.bin")
+            # model = torch.load(model_cpt, map_location='cpu')
             cpt = torch.load(model_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'], strict=False)
+            # print(cpt.keys())
+            model.load_state_dict(cpt, strict=False)
             logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
 
     if args.freeze_model_weights:
@@ -412,8 +415,8 @@ if __name__ == '__main__':
 
     # todo: group optimizer params
     optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)    
-    if args.model_cpt or args.backbone_cpt:
-        optimizer.load_state_dict(cpt['optimizer_state_dict'])
+    # if args.model_cpt or args.backbone_cpt:
+    #     optimizer.load_state_dict(cpt['optimizer_state_dict'])
 
     # for encoder only classification
     def keep_for_metrics_fn(batch, output):

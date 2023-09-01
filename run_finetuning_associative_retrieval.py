@@ -57,16 +57,14 @@ parser.add_argument('--working_dir', type=str, default='.',
 parser.add_argument('--seed', type=int, default=42, help='random seed')
 parser.add_argument('--show_valid_examples', type=int, default=0,
                     help='how many valid examples to show during training (default: 0)')
-parser.add_argument('--input_seq_len', type=int, default=128, help='input sequnce length (default: 128).')
-parser.add_argument('--target_seq_len', type=int, default=16, help='target sequnce length, should be set to '
-                                                                   'max(len(target))+1 for EOS (default: 16).')
+# parser.add_argument('--input_seq_len', type=int, default=128, help='input sequnce length (default: 128).')
+# parser.add_argument('--target_seq_len', type=int, default=16, help='target sequnce length, should be set to '
+                                                                #    'max(len(target))+1 for EOS (default: 16).')
 parser.add_argument('--data_n_workers', type=int, default=2, help='number of dataloader workers (default: 2)')
 
 parser.add_argument('--input_prefix', type=str, default='', help='add task prefix to an input string (default: "")')
 parser.add_argument('--sliding_window', action='store_true', help='use slinding window attention mask, '
                     'eval on last segment only', default=False)
-
-# parser.add_argument('--use_generate_on_valid', action='store_true', help='use generate methon on validation', default=False)
 
 # model args
 parser.add_argument('--from_pretrained', type=str, help='model name in HF Model Hub (default: "")')
@@ -79,6 +77,16 @@ parser.add_argument('--model_cpt', type=str, default=None, help='pretrained mode
 parser.add_argument('--model_type', type=str, default='encoder-decoder',
                     help='model type, encoder, encoder-decoder, decoder, affects preprocessing '
                          '(default: encoder-decoder)')
+
+# Dataset args
+parser.add_argument('--key_size', type=int, default=None, help='number of digits in keys')
+parser.add_argument('--value_size', type=int, default=None, help='number of digits in values')
+parser.add_argument('--num_pairs', type=int, default=None, help='number of key-value pairs in sample')
+parser.add_argument('--dataset_path', type=str, default="/home/jovyan/rmt/datasets/associative_retrieval/", help="path to saved datasets")
+parser.add_argument('--train_size', type=int, default=10000, help='number of samples in train split')
+parser.add_argument('--valid_size', type=int, default=1000, help='number of samples in validation split')
+parser.add_argument('--test_size', type=int, default=2000, help='number of samples in test split')
+parser.add_argument('--segment_size', type=int, default=128, help='number of useful tokens in a segment')
 
 
 # Aydar # RMT args 
@@ -124,48 +132,46 @@ parser.add_argument('--warmup_init', action='store_true', default=False,
                     help='Adafactor warmup_init (default: False)')
 
 
-def download_metric():
-    scrolls_metric_path = hf_hub_download(repo_id="tau/scrolls", filename="metrics/scrolls.py", repo_type="dataset")
-    updated_scrolls_metric_path = (
-        os.path.dirname(scrolls_metric_path) + os.path.basename(scrolls_metric_path).replace(".", "_") + ".py"
-    )
-    shutil.copy(scrolls_metric_path, updated_scrolls_metric_path)
-    return updated_scrolls_metric_path
+NUM_SYMBOLS = 16
+def generate_pairs(key_size, value_size, num_pairs):
+    keys = torch.randint(0, NUM_SYMBOLS, (num_pairs * 2, key_size))
+    keys[:, 0] = torch.randint(1, NUM_SYMBOLS, (num_pairs * 2, ))
+    
+    unique = keys.unique(dim=0)
+    delta_pairs = num_pairs - unique.shape[0]
+    if delta_pairs > 0:
+        print('got unique')
+        return generate_pairs(key_size, value_size, num_pairs)
+
+    selected_ids = torch.randperm(unique.shape[0])[:num_pairs]
+    keys = unique[selected_ids]
+
+    values = torch.randint(0, NUM_SYMBOLS, (num_pairs, value_size))
+    values[:, 0] = torch.randint(1, NUM_SYMBOLS, (num_pairs, ))
+    return keys, values
 
 
-scrolls_metric_path = download_metric()
+class ARDataset:
+    def __init__(self, key_size, value_size, sample_len=1, num_samples=20_000):
+        self.sample_len = sample_len
+        keys, values = generate_pairs(key_size, value_size, sample_len * num_samples)
 
-task_to_metric = {
-    'gov_report': ['rouge/rouge1', 'rouge/rouge2', 'rouge/rougeL', 'rouge/rougeLsum', 'rouge/geometric_mean'],
-    'summ_screen_fd': ['rouge/rouge1', 'rouge/rouge2', 'rouge/rougeL', 'rouge/rougeLsum', 'rouge/geometric_mean'],
-    'qmsum': ['rouge/rouge1', 'rouge/rouge2', 'rouge/rougeL', 'rouge/rougeLsum', 'rouge/geometric_mean'],
-    'narrative_qa': ['f1'],
-    'qasper': ['f1'],
-    'quality': ['exact_match'],
-    'contract_nli': ['exact_match']
-}
+        self.keys = keys.reshape(num_samples, -1)
+        self.values = values.reshape(num_samples, -1)
+        self.target_key_inds = torch.randint(sample_len, (num_samples, ))
 
-tasks_with_duplicates = {'narrative_qa', 'qasper'}
+    def __getitem__(self, idx):
+        keys, values, tgt_ind = self.keys[idx], self.values[idx], self.target_key_inds[idx]
+        dim = 0 if keys.ndim == 1 else 1
+        keys = torch.chunk(keys, self.sample_len, dim=dim)
+        values = torch.chunk(values, self.sample_len, dim=dim)
 
-
-# https://github.com/tau-nlp/scrolls/blob/5bfb8dbaf3a0128ac8c65922096fd95a645f6ba2/baselines/src/utils/duplicates.py#L1
-# some tasks have multiple possible labels for single input, drop_duplicates_in_input will collect such labels
-def drop_duplicates_in_input(untokenized_dataset):
-    indices_to_keep = []
-    id_to_idx = {}
-    outputs = []
-    for i, (id_, output) in enumerate(zip(untokenized_dataset["id"], untokenized_dataset["output"])):
-        if id_ in id_to_idx:
-            outputs[id_to_idx[id_]].append(output)
-            continue
-        indices_to_keep.append(i)
-        id_to_idx[id_] = len(outputs)
-        outputs.append([output])
-    untokenized_dataset = untokenized_dataset.select(indices_to_keep).flatten_indices()
-    untokenized_dataset = untokenized_dataset.remove_columns("output")
-    untokenized_dataset = untokenized_dataset.add_column("outputs", outputs)
-    return untokenized_dataset
-
+        sample = {'keys': keys, 'values': values, 'target_key_ind': tgt_ind}
+        return sample
+    
+    def __len__(self):
+        return self.keys.shape[0]
+    
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -196,146 +202,56 @@ if __name__ == '__main__':
 
     prepare_run(args, logger, logger_fmt)
 
-    if not args.from_pretrained:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(args.from_pretrained)
+    # if not args.from_pretrained:
+    #     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
+    # else:
+    #     tokenizer = AutoTokenizer.from_pretrained(args.from_pretrained)
 
     import os
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    if args.model_type == 'encoder-decoder':
-        raise NotImplementedError
-        # global_attention_first_token = False  # should be True for LED
-        # encode_plus_kwargs = {'truncation': True, 'padding': 'longest', 'pad_to_multiple_of': 1}
-        # # generate_kwargs = {'max_length': args.target_seq_len, 'min_length': args.target_seq_len}
-        # generate_kwargs = {}
-
-        # def collate_fn(batch):
-        #     # cut too long strings because they may slow down tokenization
-        #     inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
-        #     if 'outputs' in batch[0]:
-        #         # if we have more than 1 label per example (only in valid) take only one of them
-        #         # to compute loss on valid
-        #         labels = [b['outputs'][0][:args.target_seq_len * 10] for b in batch]
-        #     else:
-        #         labels = [b['output'][:args.target_seq_len * 10] for b in batch]
-        #     if args.input_prefix:
-        #         inputs = [args.input_prefix + inp for inp in inputs]
-        #     features = tokenizer.batch_encode_plus(list(inputs), max_length=args.input_seq_len, return_tensors='pt',
-        #                                            **encode_plus_kwargs)
-        #     with tokenizer.as_target_tokenizer():
-        #         labels = tokenizer.batch_encode_plus(list(labels), max_length=args.target_seq_len, return_tensors='pt',
-        #                                              **encode_plus_kwargs).input_ids
-        #     labels[labels == tokenizer.pad_token_id] = -100
-        #     features['labels'] = labels
-        #     features['id'] = [b['id'] for b in batch]
-        #     if 'outputs' in batch[0]:
-        #         features['target_text'] = [b['outputs'] for b in batch]
-        #     else:
-        #         features['target_text'] = [b['output'] for b in batch]
-        #     if 'global_attention_mask' in features:
-        #         raise RuntimeError('What global attention mask for Longformer and LongformerEncoder-Decoder should be?')
-        #     return features
-
-    elif args.model_type == 'encoder' and args.task_name == 'contract_nli':
-        raise NotImplementedError
-        # if args.use_generate_on_valid:
-        #     raise RuntimeError('use_generate_on_valid should be set to False for encoder-only models')
-
-        # encode_plus_kwargs = {'max_length': args.input_seq_len,
-        #                       'truncation': True,
-        #                       'padding': 'longest',
-        #                       'pad_to_multiple_of': 1}
-        # generate_kwargs = {}
-        # labels_map = {'Contradiction': 0, 'Entailment': 1, 'Not mentioned': 2}
-        # num_labels = len(labels_map)
-
-        # def collate_fn(batch):
-        #     # cut too long strings because they may slow down tokenization
-        #     inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
-        #     labels = [b['output'][:args.target_seq_len * 10] for b in batch]
-        #     if args.input_prefix:
-        #         inputs = [args.input_prefix + inp for inp in inputs]
-        #     features = tokenizer.batch_encode_plus(list(inputs), return_tensors='pt', **encode_plus_kwargs)
-        #     labels = np.array([labels_map[t] for t in labels])
-        #     features['labels'] = torch.from_numpy(labels)
-        #     return features
-
-    elif args.model_type == 'decoder':
-        from torch.nn.utils.rnn import pad_sequence
-
-        # tokenizer.pad_token = tokenizer.eos_token
-        # tokenizer.pad_token_id = tokenizer.eos_token
-        tokenizer.add_special_tokens({'additional_special_tokens': ['[GEN]', '[PAD]']})
-        gen_token = tokenizer.encode('[GEN]')[0]
-        tokenizer.pad_token_id = tokenizer.encode('[PAD]')[0]
-        id_pad_value = tokenizer.pad_token_id
-
-        block_size = args.input_size
-        if args.num_mem_tokens not in {0, None}:
-            block_size -= 2 * args.num_mem_tokens
+    if args.model_type == 'decoder':
+        block_size = args.segment_size
+        sep_token, gen_token, eos_token = 100, 101, 102
 
         def collate_fn(batch):
-            inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
-            labels = [b['output'][:args.input_seq_len * 10] for b in batch]
+            keys = [b['keys'] for b in batch]
+            values = [b['values'] for b in batch]
+            tgt_inds = [b['target_key_ind'].item() for b in batch]
 
-            collated = {}
-            inputs = tokenizer.batch_encode_plus(list(inputs), padding=False)
-            labels = tokenizer.batch_encode_plus(list(labels), padding=False)
+            bs = len(keys)
+            sep_tokens = torch.ones(bs, 1) * sep_token
+            eos_tokens = torch.ones(bs, 1) * eos_token
+            gen_tokens = torch.ones(bs, 1) * gen_token
+            sample = []
+            for i in range(args.num_pairs):
+                sample.append(torch.stack([k[i] for k in keys]))
+                sample.append(sep_tokens)
+                sample.append(torch.stack([v[i] for v in values]))
+                sample.append(eos_tokens)
 
-            full_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 1] + [gen_token] + l) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
-            full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
+            target_keys = torch.stack([k[i] for i, k in zip(tgt_inds, keys)])
+            target_values = torch.stack([k[i] for i, k in zip(tgt_inds, values)])
 
-            gen_inputs = [torch.tensor(i[:args.input_seq_len - 1] + [gen_token]) for i in inputs['input_ids']]
-            gen_inputs = pad_sequence(gen_inputs, padding_value=tokenizer.pad_token_id).T
-            
-            labels_mask = torch.zeros_like(full_inputs).bool()
-            for i, l in enumerate(labels['input_ids']):
-                labels_mask[i, -len(l) -1:] = True
+            sample.append(target_keys)
+            sample.append(gen_tokens)
 
-            collated['input_ids'] = collated['labels'] = full_inputs
-            collated['input_ids_generate'] = gen_inputs
-            collated['labels_mask'] = labels_mask
-            collated['attention_mask'] = (collated['input_ids'] != id_pad_value).bool()
+            input_ids_generate = torch.cat(sample, dim=1)
 
-            collated['id'] = [b['id'] for b in batch]
-            # if 'outputs' in batch[0]:
-            #     collated['target_text'] = [b['outputs'] for b in batch]
-            # else:
-            collated['target_text'] = [b['output'] for b in batch]
+            sample.append(target_values)
+            sample.append(eos_tokens)
+            input_ids = torch.cat(sample, dim=1)
+
+            labels_mask = torch.zeros_like(input_ids).bool()
+            labels_mask[:, -args.value_size - 1:] = True
+
+            collated = {'input_ids': input_ids.long(), 
+                        'input_ids_generate': input_ids_generate.long(), 
+                        'attention_mask': torch.ones_like(input_ids).bool(),
+                        'attention_mask_generate': torch.ones_like(input_ids_generate).bool(),
+                        'labels': input_ids.long(), 
+                        'labels_mask': labels_mask, 
+                        }
             return collated
-        # def collate_train(batch):
-        #     inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
-        #     labels = [b['output'][:args.input_seq_len * 10] for b in batch]
-
-        #     collated = {}
-        #     inputs = tokenizer.batch_encode_plus(list(inputs), padding=False)
-        #     labels = tokenizer.batch_encode_plus(list(labels), padding=False)
-
-        #     full_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 1] + [gen_token] + l) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
-        #     full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
-            
-        #     labels_mask = torch.zeros_like(full_inputs).bool()
-        #     for i, l in enumerate(labels['input_ids']):
-        #         labels_mask[i, -len(l) -1:] = True
-
-        #     collated['input_ids'] = collated['labels'] = full_inputs
-        #     collated['labels_mask'] = labels_mask
-        #     collated['attention_mask'] = (collated['input_ids'] != id_pad_value).bool()
-        #     return collated
-
-        # def collate_valid(batch):
-        #     inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
-
-        #     collated = {}
-        #     inputs = tokenizer.batch_encode_plus(list(inputs), padding=False)
-        #     full_inputs = [torch.tensor(i[:args.input_seq_len - 1] + [gen_token]) for i in inputs['input_ids']]
-        #     full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
-            
-        #     collated['input_ids'] = full_inputs
-        #     collated['attention_mask'] = (collated['input_ids'] != id_pad_value).bool()
-        #     collated['target_text'] = [b['output'] for b in batch]
-        #     return collated
             
     else:
         raise NotImplementedError(f'Unknown model type {args.model_type}')
@@ -343,23 +259,35 @@ if __name__ == '__main__':
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
     # get train dataset
     logger.info(f'preparing dataset for: {args.task_name}')
-    dataset = datasets.load_dataset('tau/scrolls', args.task_name)
-    train_dataset = dataset['train']
-    # shuffle train data each epoch (one loop over train_dataset)
-    train_rnd_generator = torch.Generator()
-    train_rnd_generator.manual_seed(args.seed)
+    
+    dataset_name = f"AR_k{args.key_size}_v{args.value_size}_p{args.num_pairs}"
+    path = os.path.join(args.dataset_path, dataset_name)
+
+    if os.path.exists(path):
+        print(f"Loading {dataset_name} from disk.")
+        train_dataset = torch.load(os.path.join(path, 'train'))
+        valid_dataset = torch.load(os.path.join(path, 'valid'))
+        test_dataset = torch.load(os.path.join(path, 'test'))
+    else:
+        os.system(f"mkdir {path}")
+        train_dataset = ARDataset(args.key_size, args.value_size, sample_len=args.num_pairs, num_samples=args.train_size)
+        valid_dataset = ARDataset(args.key_size, args.value_size, sample_len=args.num_pairs, num_samples=args.valid_size)
+        test_dataset = ARDataset(args.key_size, args.value_size, sample_len=args.num_pairs, num_samples=args.test_size)
+
+        torch.save(train_dataset, os.path.join(path, 'train'))
+        torch.save(valid_dataset, os.path.join(path, 'valid'))
+        torch.save(test_dataset,  os.path.join(path, 'test'))
+
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
-    train_dataloader = DataLoader(train_dataset, batch_size=per_worker_batch_size, generator=train_rnd_generator,
+    train_dataloader = DataLoader(train_dataset, batch_size=per_worker_batch_size,
                                   collate_fn=collate_fn, **kwargs)
-    # get validation dataset
-    valid_dataloader = None
-    logger.info(f'preparing validation data from: {args.task_name}')
-    valid_dataset = dataset['validation']
-    if args.task_name in tasks_with_duplicates:
-        valid_dataset = drop_duplicates_in_input(valid_dataset)
     valid_dataloader = DataLoader(valid_dataset, batch_size=per_worker_batch_size,
                                   collate_fn=collate_fn, **kwargs)
+    test_dataloader = DataLoader(test_dataset, batch_size=per_worker_batch_size,
+                                  collate_fn=collate_fn, **kwargs)
+    
+
     if args.valid_interval is None:
         args.valid_interval = args.log_interval
 
@@ -369,15 +297,13 @@ if __name__ == '__main__':
     logger.info(f'Using model class: {model_cls}')
     if not args.from_pretrained:
         model_cfg = AutoConfig.from_pretrained(args.model_cfg)
-        if args.model_type == 'encoder' and args.task_name == 'contract_nli':
-            model_cfg.num_labels = num_labels
         model = model_cls(config=model_cfg)
     else:
         logger.info(f'Loading pretrained model: {args.from_pretrained}')
         model = model_cls.from_pretrained(args.from_pretrained)
 
-    ## add [GEN] token
-    model.resize_token_embeddings(len(tokenizer))
+    # ## add [GEN] token
+    # model.resize_token_embeddings(len(tokenizer))
     
     ## load cpt of backbone model
     if args.backbone_cpt:
@@ -397,7 +323,7 @@ if __name__ == '__main__':
         model = recurrent_wrapper_cls(cell, 
                                       segment_size=block_size,
                                       max_n_segments=args.max_n_segments, 
-                                      vary_n_segments=args.vary_n_segments,
+                                    #   vary_n_segments=args.vary_n_segments,
                                       k2=args.k2,
                                       segment_alignment=args.segment_alignment
         )
@@ -405,9 +331,9 @@ if __name__ == '__main__':
 
         ## load cpt of rmt
         if args.model_cpt:
-            model_cpt = os.path.join(args.model_cpt, "model_best.pth")
+            model_cpt = os.path.join(args.model_cpt, "model_best/pytorch_model.bin")
             cpt = torch.load(model_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'], strict=False)
+            model.load_state_dict(cpt, strict=False)
             logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
 
     if args.freeze_model_weights:
@@ -448,7 +374,8 @@ if __name__ == '__main__':
         # select data from batch and model output that would be used to compute metrics
         data = {}
         if 'generation_outputs' in output:
-            data['labels'] = batch['target_text']
+            data['labels'] = batch['labels']
+            data['labels_mask'] = batch['labels_mask']
 
             data['generation_outputs'] = output['generation_outputs']
             # if 'labels_mask' in batch:
@@ -476,25 +403,35 @@ if __name__ == '__main__':
     #   - implemented currently
     # - compute metrics on batch lvl
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
-    scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
 
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
         metrics = {}
         y, p = None, None
         if 'generation_outputs' in data:
-            # replace -100 with pad token in labels
             y = data['labels']
-            p = tokenizer.batch_decode(data['generation_outputs'], skip_special_tokens=True)
+            p = data['generation_outputs']
+            metrics['exact_match'] = np.mean([y_[-args.value_size:] == p_[-args.value_size:] for p_, y_ in zip (p, y)])
 
-            metrics['exact_match'] = np.mean([y_ == p_[:len(y_)] for p_, y_ in zip (p, y)])
+            # replace -100 with pad token in labels
+            # y = torch.stack([l[m] for l, m in zip(data['labels'], data['labels_mask'])])
+            # y = data['labels'][:, -args.value_size - 1:-1]
+            # p = data['generation_outputs']
+            # if not hasattr(p, 'shape'):
+            #     p = torch.stack([torch.tensor(x) for x in p])
+            # # p = p[:, -args.value_size - 1:-1]
+
+            # metrics['exact_match'] = np.mean([(len(y_) == len(p_)) and (y_ == p_) for p_, y_ in zip (p, y)])
+            # metrics['exact_match'] = np.mean([y_ == p_ for p_, y_ in zip (p, y)])
             # preds = tokenizer.batch_decode(data['generation_outputs'], skip_special_tokens=False)
             # p = [p[:p.index(tokenizer.eos_token)] if tokenizer.eos_token in p else p for p in preds]
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
-                    logger.info(f'y: {y[i]}')
-                    logger.info(f'p: {p[i]}')
-                    logger.info(f'p ids: {data["generation_outputs"][i]}')
+                    logger.info(f"labels: {data['labels'][i]}")
+                    logger.info(f"gen: {data['generation_outputs'][i]}")
+                    logger.info(f'y: {y[i][-args.value_size:]}')
+                    logger.info(f'p: {p[i][-args.value_size:]}')
+                    # logger.info(f'p ids: {data["generation_outputs"][i]}')
                     # logger.info('\n'.join([(y_, p_[:len(y_)], y_==p_[:len(y_)]) for p_, y_ in zip (p, y[:30])]))
 
                     logger.info('-' * 50)
@@ -526,7 +463,9 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs={'pad_token_id': tokenizer.pad_token_id})
+                    #   generate_kwargs={'max_new_tokens': int(args.value_size * 2)}
+                      generate_kwargs={'pad_token_id': 102}
+                      )
 
     if not args.validate_only:
         # train loop

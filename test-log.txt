@@ -1,0 +1,40 @@
+('attention_mask', torch.Size([16, 1024]))
+('inputs_embeds', torch.Size([16, 1024, 768]))
+('attention_mask', torch.Size([16, 1024]))
+('inputs_embeds', torch.Size([16, 1024, 768]))
+('attention_mask', torch.Size([16, 1024]))
+('inputs_embeds', torch.Size([16, 1024, 768]))
+('attention_mask', torch.Size([16, 1024]))
+('inputs_embeds', torch.Size([16, 1024, 768]))
+('attention_mask', torch.Size([16, 1024]))
+{'pad_token_id': 50258, 'max_length': 1015}
+('inputs_embeds', torch.Size([16, 1024, 768]))
+{'pad_token_id': 50258, 'max_length': 1015}
+('attention_mask', torch.Size([16, 1024]))
+{'pad_token_id': 50258, 'max_length': 1015}
+('inputs_embeds', torch.Size([16, 1024, 768]))
+{'pad_token_id': 50258, 'max_length': 1015}
+('attention_mask', torch.Size([16, 1024]))
+{'pad_token_id': 50258, 'max_length': 1015}
+('inputs_embeds', torch.Size([16, 1024, 768]))
+{'pad_token_id': 50258, 'max_length': 1015}
+('attention_mask', torch.Size([16, 1024]))
+{'pad_token_id': 50258, 'max_length': 1015}
+('inputs_embeds', torch.Size([16, 1024, 768]))
+{'pad_token_id': 50258, 'max_length': 1015}
+('attention_mask', torch.Size([16, 1024]))
+{'pad_token_id': 50258, 'max_new_tokens': 2, 'max_length': 1015}
+('inputs_embeds', torch.Size([16, 1024, 768]))
+{'pad_token_id': 50258, 'max_new_tokens': 2, 'max_length': 1015}
+('attention_mask', torch.Size([16, 1024]))
+{'pad_token_id': 50258, 'max_new_tokens': 2, 'max_length': 1015}
+('inputs_embeds', torch.Size([16, 1024, 768]))
+{'pad_token_id': 50258, 'max_new_tokens': 2, 'max_length': 1015}
+('attention_mask', torch.Size([16, 1024]))
+{'pad_token_id': 50258, 'max_new_tokens': 2, 'max_length': 1015}
+('inputs_embeds', torch.Size([16, 1024, 768]))
+{'pad_token_id': 50258, 'max_new_tokens': 2, 'max_length': 1015}
+('attention_mask', torch.Size([16, 1024]))
+{'pad_token_id': 50258, 'max_new_tokens': 2, 'max_length': 1015}
+('inputs_embeds', torch.Size([16, 1024, 768]))
+{'pad_token_id': 50258, 'max_new_tokens': 2, 'max_length': 1015}

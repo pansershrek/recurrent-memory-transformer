@@ -14,7 +14,9 @@ import accelerate
 from torch.utils.data import DataLoader
 from datasets import Dataset, load_dataset, load_from_disk
 
-from lm_experiments_tools.trainer_accelerate import TrainerAccelerate as Trainer, TrainerAccelerateArgs as TrainerArgs
+# from lm_experiments_tools import Trainer, TrainerArgs
+from lm_experiments_tools.trainer_accelerate import TrainerAccelerateArgs
+from lm_experiments_tools.trainer_accelerate import TrainerAccelerate as Trainer
 
 from torch.nn.utils.rnn import pad_sequence
 
@@ -46,7 +48,7 @@ from lm_experiments_tools.utils import get_cls_by_name, get_optimizer, prepare_r
 # all gpus set with CUDA_VISIBLE_DEVICES are visible to process, indexing from 0 to ...
 # torch.cuda.set_device(hvd.local_rank())
 
-parser = HfArgumentParser(TrainerArgs)
+parser = HfArgumentParser(TrainerAccelerateArgs)
 parser.add_argument('--task_name', type=str, help="Task name, wikitext, ...")
 parser.add_argument('--validate_only', action='store_true', default=False,
                     help='Skip training and run only validation. (default: False)')
@@ -55,9 +57,8 @@ parser.add_argument('--working_dir', type=str, default='.',
 parser.add_argument('--seed', type=int, default=42, help='random seed')
 parser.add_argument('--show_valid_examples', type=int, default=0,
                     help='how many valid examples to show during training (default: 0)')
-parser.add_argument('--input_seq_len', type=int, default=128, help='input sequnce length (default: 128).')
-parser.add_argument('--target_seq_len', type=int, default=16, help='target sequnce length, should be set to '
-                                                                   'max(len(target))+1 for EOS (default: 16).')
+parser.add_argument('--block_size', type=int, default=128, help='max size of language modeling block')
+parser.add_argument('--history_size', type=int, default=0, help='max number of past tokens for each block')
 parser.add_argument('--data_n_workers', type=int, default=2, help='number of dataloader workers (default: 2)')
 
 parser.add_argument('--input_prefix', type=str, default='', help='add task prefix to an input string (default: "")')
@@ -75,12 +76,11 @@ parser.add_argument('--model_type', type=str, default='encoder-decoder',
                          '(default: encoder-decoder)')
 
 
-# Aydar # RMT args 
+# RMT args 
 parser.add_argument('--input_size', type=int, default=None, help='maximal input size of the backbone model')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
 parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
-parser.add_argument('--sampling_prob', type=float, default=1, help='Probability of sampling other number of segments')
 parser.add_argument('--sum_loss', action='store_true', default=False,
                     help='with this flag task loss from all segments is summed')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
@@ -91,12 +91,10 @@ parser.add_argument('--memory_layers', type=str, help='memory-augmented layer in
 parser.add_argument('--share_memory_layers', action='store_true', help='share weights of memory layers', default=False)
 parser.add_argument('--reconstruction_loss_coef', type=float, default=None,
                     help='reconstuction loss ratio in total loss')
-# parser.add_argument('--segment_ordering', type=str,help='????', default='regular',
-#                     choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
 parser.add_argument('--retain_graph', action='store_true', help='Retain computation graph during backward pass', default=False)
 parser.add_argument('--use_truncated_backward', action='store_true', default=False,
                     help='whether to use RMT truncated bptt method in backward')
-parser.add_argument('--k1', type=int, default=-1, help='(not implemented) If not -1, gradient update is done each k1 segments')
+# parser.add_argument('--k1', type=int, default=-1, help='(not implemented) If not -1, gradient update is done each k1 segments')
 parser.add_argument('--k2', type=int, default=-1, help='number of last segments used by backward')
 parser.add_argument('--freeze_model_weights', action='store_true', default=False,
                     help='Stop training all model weights except memory layers')
@@ -129,6 +127,10 @@ parser.add_argument('--adapter_bottleneck_dim', type=int, default=512, help='')
 parser.add_argument('--adapter_dropout', type=float, default=0.1, help='')
 parser.add_argument('--adapter_scale', type=float, default=4.0, help='')
 
+# Dataset args
+parser.add_argument('--pile_subset_names', type=str, default=None, help='use only these subsets of The PILE, separated by ;')
+parser.add_argument('--min_tokens_in_document', type=int, default=None, help='do not use documents shorter than this value')
+parser.add_argument('--max_tokens_in_document', type=int, default=None, help='do not use documents longer than this value')
 
 
 if __name__ == '__main__':
@@ -168,12 +170,29 @@ if __name__ == '__main__':
     # Prepare datasets
     logger.info(f'preparing dataset for {args.task_name}')
     
-    block_size = args.input_size
-    if args.num_mem_tokens is not None:
-        block_size -= 2 * args.num_mem_tokens
-    history_size = args.input_seq_len - block_size
+    block_size = args.block_size if args.block_size is not None else args.input_size
+    history_size = args.history_size
 
-    class segmentDataLoaderOTF(DataLoader):
+    def filter_by_subset(sample, subset_name):
+        if not isinstance(subset_name, list):
+            subset_name = [subset_name]
+        
+        return any([sn in sample['meta']['pile_set_name'] for sn in subset_name])
+
+    def filter_by_len(sample, field, min_len=None, max_len=None):
+        
+        sample_text = sample[field]
+        if min_len is not None and len(sample_text) < min_len:
+            return False
+        if max_len is not None and len(sample_text) > max_len:
+            return False
+
+        return True
+
+    def tokenization(sample):
+        return tokenizer(sample["text"])
+
+    class BlockDataLoader(DataLoader):
         def __init__(self, dataset, block_size, history_size, max_samples=None, shuffle=False, *args, **kwargs):
             super().__init__(dataset, *args, **kwargs)
             self.block_size = block_size
@@ -213,16 +232,16 @@ if __name__ == '__main__':
 
                 batch, samples = samples[:self.batch_size], samples[self.batch_size:]
                 yield self.collate_fn(batch)
+                
             
 
-    from torch.nn.utils.rnn import pad_sequence
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     def collate_fn(batch):
         input_ids = labels = [torch.tensor(b[::-1]) for b in batch]
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
-        input_ids = pad_sequence(input_ids, padding_value=id_pad_value).T.flip(1)
-        labels = pad_sequence(labels, padding_value=-100).T.flip(1)
-        attention_mask = pad_sequence(attention_mask, padding_value=0).T.flip(1)
+        input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True)
+        labels = pad_sequence(labels, padding_value=-100, batch_first=True)
+        attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True)
 
         collated = {'input_ids': input_ids,
                     'labels': labels, 
@@ -232,24 +251,28 @@ if __name__ == '__main__':
             labels_mask = torch.ones_like(input_ids, dtype=bool)
             labels_mask[:, :-block_size] = False
             collated['labels_mask'] = labels_mask
-
-        if getattr(args, 'vary_n_segments', False):
-            if getattr(args, 'sampling_prob', False):
-                random_value = torch.rand((1)).item()
-                if random_value > args.sampling_prob:
-                    return collated
-                
-            n_segments = random.randint(0, args.max_n_segments)
-            n_tokens = n_segments * block_size
-            for k in collated:
-                collated[k] = collated[k][:, -n_tokens:]
         
         return collated
 
 
-    train_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/train')
-    valid_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/valid')
-    test_dataset = load_from_disk('/home/jovyan/rmt/datasets/arxiv/test')
+    dataset = load_dataset('/home/jovyan/rmt/datasets/pile/data')
+
+    if args.pile_subset_names is not None:
+        subset_names = args.pile_subset_names.split(';')
+        print(f'Leaving only following subsets: {subset_names}')
+        dataset = dataset.filter(lambda sample: filter_by_subset(sample, subset_names))
+
+    min_tokens, max_tokens = args.min_tokens_in_document, args.max_tokens_in_document
+    max_chars = max_tokens * 128 if max_tokens is not None else None
+    if min_tokens is not None or max_chars is not None:
+        dataset = dataset.filter(lambda sample: filter_by_len(sample, 'text', min_tokens, max_chars))
+
+    dataset = dataset.map(tokenization, batched=True)
+
+    if min_tokens is not None or max_tokens is not None:
+        dataset = dataset.filter(lambda sample: filter_by_len(sample, 'input_ids', min_tokens, max_tokens))
+
+    train_dataset, valid_dataset, test_dataset = dataset["train"], dataset["validation"], dataset["test"]
 
     
     # shuffle train data each epoch (one loop over train_dataset)
@@ -258,7 +281,7 @@ if __name__ == '__main__':
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
     if not args.validate_only:
-        train_dataloader = segmentDataLoaderOTF(train_dataset, batch_size=per_worker_batch_size,  generator=train_rnd_generator,
+        train_dataloader = BlockDataLoader(train_dataset, batch_size=per_worker_batch_size,  generator=train_rnd_generator,
                                         block_size=block_size, 
                                         history_size=history_size, 
                                         shuffle=True,
@@ -271,7 +294,7 @@ if __name__ == '__main__':
     max_samples = 100
     valid_dataloader = None
     logger.info(f'preparing validation data')
-    valid_dataloader = segmentDataLoaderOTF(valid_dataset, batch_size=per_worker_batch_size,
+    valid_dataloader = BlockDataLoader(valid_dataset, batch_size=per_worker_batch_size,
                                     block_size=block_size, 
                                     history_size=history_size, 
                                     shuffle=False,
@@ -280,7 +303,7 @@ if __name__ == '__main__':
     
     # # get test dataset
     # test_sampler = DistributedSampler(test_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
-    # test_dataloader = segmentDataLoaderOTF(test_dataset, batch_size=per_worker_batch_size, sampler=test_sampler,
+    # test_dataloader = BlockDataLoader(test_dataset, batch_size=per_worker_batch_size, sampler=test_sampler,
     #                                 block_size=block_size, 
     #                                 history_size=history_size, 
     #                                 shuffle=False,
@@ -364,15 +387,6 @@ if __name__ == '__main__':
             model.load_state_dict(cpt['model_state_dict'], strict=False)
             logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
 
-        # if args.freeze_model_weights:
-        #     for n, p in model.named_parameters():
-        #         # if 'memory' not in n and 'wte' not in n:
-        #         if 'memory' not in n:
-        #             p.requires_grad = False
-        #     if hvd.rank() == 0:
-        #         logger.info(f'Frozen moodel weights')
-        #         logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
-
     if args.freeze_model_weights:
         for n, p in model.named_parameters():
             if 'memory' not in n and 'lora' not in n and 'adapter' not in n:
@@ -399,10 +413,7 @@ if __name__ == '__main__':
     # todo: group optimizer params
     optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)    
     if args.model_cpt or args.backbone_cpt:
-        try:
-            optimizer.load_state_dict(cpt['optimizer_state_dict'])
-        except(ValueError):
-                logger.info(f"Error loading optimizer state.")
+        optimizer.load_state_dict(cpt['optimizer_state_dict'])
 
     # for encoder only classification
     def keep_for_metrics_fn(batch, output):
