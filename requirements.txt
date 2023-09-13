@@ -11,4 +11,5 @@ tensorboard
 nltk
 rouge_score
 accelerate
+deepspeed
 six
