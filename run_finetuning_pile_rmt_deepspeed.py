@@ -19,6 +19,7 @@ from lm_experiments_tools.trainer_accelerate import TrainerAccelerateArgs
 from lm_experiments_tools.trainer_accelerate import TrainerAccelerate as Trainer
 
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data.distributed import DistributedSampler
 
 from peft import get_peft_model, LoraConfig, TaskType
 # load_dotenv()
@@ -214,7 +215,7 @@ if __name__ == '__main__':
                 inds = inds[:self.max_samples]
 
             if self.shuffle: 
-                random.shuffle(inds)
+                np.random.shuffle(inds)
 
             doc_ind = 0
             samples = []
@@ -239,7 +240,7 @@ if __name__ == '__main__':
 
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     def collate_fn(batch):
-        input_ids = labels = [torch.tensor(b[::-1]) for b in batch]
+        input_ids = labels = [torch.tensor(b) for b in batch]
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True)
         labels = pad_sequence(labels, padding_value=-100, batch_first=True)
@@ -283,7 +284,10 @@ if __name__ == '__main__':
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
     if not args.validate_only:
-        train_dataloader = BlockDataLoader(train_dataset, batch_size=per_worker_batch_size,  generator=train_rnd_generator,
+        
+        train_sampler = DistributedSampler(train_dataset, shuffle=True)
+        train_dataloader = BlockDataLoader(train_dataset, batch_size=per_worker_batch_size,  #generator=train_rnd_generator,
+                                        sampler=train_sampler,
                                         block_size=block_size, 
                                         history_size=history_size, 
                                         shuffle=True,
@@ -296,7 +300,9 @@ if __name__ == '__main__':
     max_samples = 100
     valid_dataloader = None
     logger.info(f'preparing validation data')
+    valid_sampler = DistributedSampler(valid_dataset, shuffle=True)
     valid_dataloader = BlockDataLoader(valid_dataset, batch_size=per_worker_batch_size,
+                                    sampler=valid_sampler,
                                     block_size=block_size, 
                                     history_size=history_size, 
                                     shuffle=False,
@@ -447,6 +453,8 @@ if __name__ == '__main__':
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
     # scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
 
+    model, optimizer, _ = accelerator.prepare(model, optimizer, train_dataloader)
+
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
         metrics = {}
@@ -454,10 +462,13 @@ if __name__ == '__main__':
             y, p = data['labels'], data['predictions']
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
-                    # logger.info(f'y: {tokenizer.decode(y[i])}')
-                    # logger.info(f'p: {tokenizer.decode(p[i])}')
                     logger.info(f'y: {y[i]}')
                     logger.info(f'p: {p[i]}')
+                    pred = p[i][p[i] != -100]
+                    lab = y[i][y[i] != -100]
+                    logger.info(f'y: {tokenizer.decode(lab)}')
+                    logger.info(f'p: {tokenizer.decode(pred)}')
+                    
                     logger.info('-' * 50)
         try:
             perplexity = math.exp(data["loss"].mean())

@@ -278,9 +278,11 @@ if __name__ == '__main__':
         torch.save(valid_dataset, os.path.join(path, 'valid'))
         torch.save(test_dataset,  os.path.join(path, 'test'))
 
+    train_rnd_generator = torch.Generator()
+    train_rnd_generator.manual_seed(args.seed)
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
-    train_dataloader = DataLoader(train_dataset, batch_size=per_worker_batch_size,
+    train_dataloader = DataLoader(train_dataset, batch_size=per_worker_batch_size,  generator=train_rnd_generator,
                                   collate_fn=collate_fn, **kwargs)
     valid_dataloader = DataLoader(valid_dataset, batch_size=per_worker_batch_size,
                                   collate_fn=collate_fn, **kwargs)
@@ -345,12 +347,12 @@ if __name__ == '__main__':
         logger.info(f'Remaining parameters: {[n for n, p in model.named_parameters() if p.requires_grad]}')
 
     # # fix the not-contiguous error with loralib and horovod
-    # def make_contiguous(module):
-    #     with torch.no_grad():
-    #         for param in module.parameters():
-    #             param.set_(param.contiguous())
-    # make_contiguous(model)
-    
+    def make_contiguous(module):
+        with torch.no_grad():
+            for param in module.parameters():
+                param.set_(param.contiguous())
+    make_contiguous(model)
+
     # define optimizer
     optimizer_cls = get_optimizer(args.optimizer)
     if optimizer_cls is None:
@@ -411,7 +413,8 @@ if __name__ == '__main__':
         if 'generation_outputs' in data:
             y = data['labels']
             p = data['generation_outputs']
-            metrics['exact_match'] = np.mean([y_[-args.value_size:] == p_[-args.value_size:] for p_, y_ in zip (p, y)])
+            metrics['exact_match'] = np.mean([(len(p_) >= args.value_size + 1) and (y_[-args.value_size - 1:] == p_[-args.value_size - 1:]) \
+                                              for p_, y_ in zip (p, y)])
 
             # replace -100 with pad token in labels
             # y = torch.stack([l[m] for l, m in zip(data['labels'], data['labels_mask'])])
@@ -429,8 +432,8 @@ if __name__ == '__main__':
                 for i in range(min(args.show_valid_examples, len(y))):
                     logger.info(f"labels: {data['labels'][i]}")
                     logger.info(f"gen: {data['generation_outputs'][i]}")
-                    logger.info(f'y: {y[i][-args.value_size:]}')
-                    logger.info(f'p: {p[i][-args.value_size:]}')
+                    logger.info(f'y: {y[i][-args.value_size - 1:]}')
+                    logger.info(f'p: {p[i][-args.value_size - 1:]}')
                     # logger.info(f'p ids: {data["generation_outputs"][i]}')
                     # logger.info('\n'.join([(y_, p_[:len(y_)], y_==p_[:len(y_)]) for p_, y_ in zip (p, y[:30])]))
 
@@ -467,6 +470,7 @@ if __name__ == '__main__':
                       generate_kwargs={'pad_token_id': 102}
                       )
 
+    # try:
     if not args.validate_only:
         # train loop
         trainer.train()
@@ -480,9 +484,9 @@ if __name__ == '__main__':
         if valid_dataloader is not None:
             logger.info('Runnning validation on valid data:')
             trainer.validate(valid_dataloader, write_tb=False, split='valid')
-        if test_dataloader is not None:
-            logger.info('Runnning validation on test data:')
-            trainer.validate(test_dataloader, write_tb=True, split='test')
+        # if test_dataloader is not None:
+        #     logger.info('Runnning validation on test data:')
+            # trainer.validate(test_dataloader, write_tb=True, split='test')
         trainer.save_metrics(save_path=args.model_path)
     else:
         # run validation, do not write to tensorboard
@@ -491,6 +495,8 @@ if __name__ == '__main__':
         if valid_dataloader is not None:
             logger.info('Running validation on valid data:')
             trainer.validate(valid_dataloader, write_tb=True, split='valid')
-        if test_dataloader is not None:
-            logger.info('Runnning validation on test data:')
-            trainer.validate(test_dataloader, write_tb=True, split='test')
+        # if test_dataloader is not None:
+        #     logger.info('Runnning validation on test data:')
+        #     trainer.validate(test_dataloader, write_tb=True, split='test')
+    # except Exception as e:
+    #     print(f"Got exception: {e}")

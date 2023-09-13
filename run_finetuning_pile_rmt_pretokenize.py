@@ -237,7 +237,7 @@ if __name__ == '__main__':
 
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     def collate_fn(batch):
-        input_ids = labels = [torch.tensor(b[::-1]) for b in batch]
+        input_ids = labels = [torch.tensor(b) for b in batch]
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True)
         labels = pad_sequence(labels, padding_value=-100, batch_first=True)

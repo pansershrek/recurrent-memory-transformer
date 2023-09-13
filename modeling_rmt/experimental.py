@@ -92,9 +92,76 @@ class RecurrentWrapperCustomForward(RecurrentWrapper):
         self.override_base_model_forward(base_model_forward)
         self.memory_storage = {}
 
+    def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
+        memory_state = None
+        self.memory_storage = {}
+        segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+
+        cell_outputs = []
+        for seg_num, segment in enumerate(segmented):
+            cell_out, memory_state = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
+            cell_outputs.append(cell_out)
+            self.manage_gradients(memory_state, seg_num)
+
+        out = self.process_outputs(cell_outputs, labels=labels, 
+                                   labels_mask=labels_mask,
+                                   output_attentions=output_attentions, 
+                                   output_hidden_states=output_hidden_states)
+        return out
+
     def override_base_model_forward(self, custom_forward):
         new_forward = lambda *args, **kwargs: custom_forward(*args, **kwargs, rmt_parent=self)
         self.memory_cell.model.gpt_neox.forward = types.MethodType(new_forward, self.memory_cell.model.gpt_neox)
+
+    def manage_gradients(self, memory_state, seg_num):
+        k2, max_n_segments = self.rmt_config.get('k2'), self.rmt_config.get('max_n_segments')
+        if seg_num == 0 \
+            or k2 in {-1, None} \
+            or seg_num + k2 > max_n_segments:
+                return True
+        
+        memory_state = memory_state.detach()
+        for k, t in self.memory_storage.items():
+            self.memory_storage[k] = t.detach
+        return False
+
+
+class RecurrentWrapperCustomForwardNoMemPass(RecurrentWrapperCustomForward):
+    def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
+        memory_state = None
+        self.memory_storage = {}
+        segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+
+        cell_outputs = []
+        for seg_num, segment in enumerate(segmented):
+            cell_out, _ = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
+            cell_outputs.append(cell_out)
+            self.manage_gradients(memory_state, seg_num)
+
+        out = self.process_outputs(cell_outputs, labels=labels, 
+                                   labels_mask=labels_mask,
+                                   output_attentions=output_attentions, 
+                                   output_hidden_states=output_hidden_states)
+        return out
+    
+
+class RecurrentWrapperTrainableMem(RecurrentWrapperCustomForward):
+    def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
+        memory_state = None
+        self.memory_storage = {}
+        segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+
+        cell_outputs = []
+        for seg_num, segment in enumerate(segmented):
+            cell_out, _ = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
+            cell_outputs.append(cell_out)
+            self.manage_gradients(memory_state, seg_num)
+
+        out = self.process_outputs(cell_outputs, labels=labels, 
+                                   labels_mask=labels_mask,
+                                   output_attentions=output_attentions, 
+                                   output_hidden_states=output_hidden_states)
+        return out
 
 
 ### ENCODER ###

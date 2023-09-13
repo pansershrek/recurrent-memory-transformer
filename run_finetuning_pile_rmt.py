@@ -86,7 +86,7 @@ parser.add_argument('--sum_loss', action='store_true', default=False,
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
 parser.add_argument('--segment_ordering', type=str, help='segment order', default='regular',
                     choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
-parser.add_argument('--memory_forward_func', type=str, help='path to memory forward funсtion script', default=None)
+# parser.add_argument('--memory_forward_func', type=str, help='path to memory forward funсtion script', default=None)
 parser.add_argument('--memory_layers', type=str, help='memory-augmented layer inds or "all" for all layers', default=None)
 parser.add_argument('--share_memory_layers', action='store_true', help='share weights of memory layers', default=False)
 parser.add_argument('--reconstruction_loss_coef', type=float, default=None,
@@ -99,6 +99,8 @@ parser.add_argument('--k2', type=int, default=-1, help='number of last segments 
 parser.add_argument('--freeze_model_weights', action='store_true', default=False,
                     help='Stop training all model weights except memory layers')
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
+
+parser.add_argument('--base_model_forward', type=str, default=None, help='custom forward function for backbone model')
 
 
 # tokenizer
@@ -212,7 +214,7 @@ if __name__ == '__main__':
                 inds = inds[:self.max_samples]
 
             if self.shuffle: 
-                random.shuffle(inds)
+                np.random.shuffle(inds)
 
             doc_ind = 0
             samples = []
@@ -237,7 +239,7 @@ if __name__ == '__main__':
 
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     def collate_fn(batch):
-        input_ids = labels = [torch.tensor(b[::-1]) for b in batch]
+        input_ids = labels = [torch.tensor(b) for b in batch]
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True)
         labels = pad_sequence(labels, padding_value=-100, batch_first=True)
@@ -371,13 +373,17 @@ if __name__ == '__main__':
         recurrent_wrapper_cls = get_cls_by_name(args.recurrent_wrapper_cls)
         logger.info(f'Wrapping in: {memory_cell_cls} and {recurrent_wrapper_cls}')
         
-        
+        base_model_forward = args.base_model_forward
+        if base_model_forward is not None:
+            base_model_forward = get_cls_by_name(base_model_forward)
+            logger.info(f"Using custom forward function: {base_model_forward}")
         cell = memory_cell_cls(model, args.num_mem_tokens)
         model = recurrent_wrapper_cls(cell, 
                                       segment_size=block_size,
                                       max_n_segments=args.max_n_segments, 
                                       vary_n_segments=args.vary_n_segments,
                                       k2=args.k2,
+                                      base_model_forward_func=base_model_forward
         )
                                     
 
@@ -448,10 +454,13 @@ if __name__ == '__main__':
             y, p = data['labels'], data['predictions']
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
-                    # logger.info(f'y: {tokenizer.decode(y[i])}')
-                    # logger.info(f'p: {tokenizer.decode(p[i])}')
                     logger.info(f'y: {y[i]}')
                     logger.info(f'p: {p[i]}')
+                    pred = p[i][p[i] != -100]
+                    lab = y[i][y[i] != -100]
+                    logger.info(f'y: {tokenizer.decode(lab)[:100]}')
+                    logger.info(f'p: {tokenizer.decode(pred)[:100]}')
+                    
                     logger.info('-' * 50)
         try:
             perplexity = math.exp(data["loss"].mean())

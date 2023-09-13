@@ -123,7 +123,8 @@ def gpt_neox_horizontal_memory_forward(
             if i in rmt_parent.memory_storage:
                 layer_memory = rmt_parent.memory_storage[i]
                 if layer_memory.shape[0] == 1:
-                    layer_memory = layer_memory.repeat(hidden_states.shape[0], 1, 1)
+                    raise NotImplementedError
+                    # layer_memory = layer_memory.repeat(hidden_states.shape[0], 1, 1)
 
                 hidden_states[:, :num_mem_tokens] = layer_memory
                     
@@ -137,6 +138,12 @@ def gpt_neox_horizontal_memory_forward(
                 output_attentions=output_attentions,
             )
         hidden_states = outputs[0]
+
+        ### set layer memory 
+        ### for all layers except the first one
+        if i > 0:
+            rmt_parent.memory_storage[i] = hidden_states[:, -num_mem_tokens:]
+
         if use_cache is True:
             presents = presents + (outputs[1],)
         if output_attentions:
@@ -144,9 +151,6 @@ def gpt_neox_horizontal_memory_forward(
 
 
     hidden_states = self.final_layer_norm(hidden_states)
-
-    ### set layer memory
-    rmt_parent.memory_storage[i] = hidden_states[:, -num_mem_tokens:].detach()
 
     # Add last hidden state
     if output_hidden_states:

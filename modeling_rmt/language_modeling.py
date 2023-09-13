@@ -47,7 +47,8 @@ class MemoryCell(torch.nn.Module):
         inputs_embeds = kwargs.get('inputs_embeds')
         if inputs_embeds is None:
             inputs_embeds = self.model.get_input_embeddings()(input_ids)
-        inputs_embeds = torch.cat([memory_state, inputs_embeds, memory_state], dim=1)
+        if self.num_mem_tokens > 0:
+            inputs_embeds = torch.cat([memory_state, inputs_embeds, memory_state], dim=1)
 
         seg_kwargs['input_ids'] = None
         seg_kwargs['inputs_embeds'] = inputs_embeds

@@ -243,6 +243,21 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 # df = pd.concat(dfs)
 # df.to_csv(out_path, index=False)
 
+# Associative retrieval
+
+paths = [
+        '/home/jovyan/rmt/runs/associative_retrieval_v2',
+        ]
+
+paths = [Path(p) for p in paths]
+metric_names = ['exact_match']
+target_cols = TGT_COLS + ['best_valid_exact_match', 'key_size', 'value_size', 'num_pairs']
+out_path = 'results/ar.csv'
+
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)
+
 
 # # #wikitext
 
@@ -260,6 +275,21 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 # # dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
 # # df = pd.concat(dfs)
 # # df.to_csv(out_path, index=False)
+
+# pile 
+paths = [
+        '/home/jovyan/rmt/runs/pile/',
+        ]
+
+paths = [Path(p) for p in paths]
+metric_names = ['loss']
+new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
+target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
+out_path = 'results/pile.csv'
+
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)
 
 # arxiv 
 paths = [
