@@ -1,6 +1,9 @@
-*_exp*
+*_exp
+*_exp.*
 */exp/*
 .nfs*
+results
+notebooks
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -138,3 +141,4 @@ runs/
 data/*.tsv
 tests/runs/
 notebooks/debug_rmt_bptt.ipynb
+notebooks/interpret_results_decoder.ipynb
