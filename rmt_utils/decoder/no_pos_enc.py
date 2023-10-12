@@ -14,7 +14,7 @@ def gpt_neox_no_pos_enc_forward(
     output_attentions: Optional[bool] = None,
     output_hidden_states: Optional[bool] = None,
     return_dict: Optional[bool] = None,
-    # rmt_parent=None
+    rmt_parent=None
 ) -> Union[Tuple, BaseModelOutputWithPast]:
     r"""
     past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
@@ -52,7 +52,12 @@ def gpt_neox_no_pos_enc_forward(
 
     if position_ids is None:
         device = input_ids.device if input_ids is not None else inputs_embeds.device
-        position_ids = torch.arange(past_length, seq_length + past_length, dtype=torch.long, device=device)
+        mem_size = rmt_parent.memory_cell.num_mem_tokens
+        if mem_size not in {0, None}:
+            mem_positions = torch.zeros(mem_size, dtype=torch.long, device=device)
+            position_ids = torch.cat([mem_positions, torch.arange(past_length + 1, seq_length + past_length + 1 - 2*mem_size, dtype=torch.long, device=device), mem_positions])
+        else:
+            position_ids = torch.arange(past_length, seq_length + past_length, dtype=torch.long, device=device)
         position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
     else:
         position_ids = position_ids.view(-1, seq_length).long()
@@ -119,14 +124,14 @@ def gpt_neox_no_pos_enc_forward(
             #     head_mask[i],
             # )
         else:
-            num_mem_tokens = rmt_parent.memory_cell.num_mem_tokens
-            if i in rmt_parent.memory_storage:
-                layer_memory = rmt_parent.memory_storage[i]
-                if layer_memory.shape[0] == 1:
-                    raise NotImplementedError
-                    # layer_memory = layer_memory.repeat(hidden_states.shape[0], 1, 1)
+            # num_mem_tokens = rmt_parent.memory_cell.num_mem_tokens
+            # if i in rmt_parent.memory_storage:
+            #     layer_memory = rmt_parent.memory_storage[i]
+            #     if layer_memory.shape[0] == 1:
+            #         raise NotImplementedError
+            #         # layer_memory = layer_memory.repeat(hidden_states.shape[0], 1, 1)
 
-                hidden_states[:, :num_mem_tokens] = layer_memory
+            #     hidden_states[:, :num_mem_tokens] = layer_memory
                     
             outputs = layer(
                 hidden_states,
@@ -139,10 +144,10 @@ def gpt_neox_no_pos_enc_forward(
             )
         hidden_states = outputs[0]
 
-        ### set layer memory 
-        ### for all layers except the first one
-        if i > 0:
-            rmt_parent.memory_storage[i] = hidden_states[:, -num_mem_tokens:]
+        # ### set layer memory 
+        # ### for all layers except the first one
+        # if i > 0:
+        #     rmt_parent.memory_storage[i] = hidden_states[:, -num_mem_tokens:]
 
         if use_cache is True:
             presents = presents + (outputs[1],)

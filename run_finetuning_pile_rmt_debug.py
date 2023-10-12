@@ -212,8 +212,8 @@ if __name__ == '__main__':
                 return []
             if args.min_tokens_in_document is not None and len(input_ids) < args.min_tokens_in_document:
                 return []
-            samples = [input_ids[max({0, start - self.history_size - self.block_size}): start] for start in range(self.block_size + self.history_size, len(input_ids), self.block_size)]
-            # samples = [input_ids[max({0, start - self.history_size - self.block_size}): start] for start in range(self.block_size, len(input_ids), self.block_size)]
+            # samples = [input_ids[max({0, start - self.history_size - self.block_size}): start] for start in range(self.block_size + self.history_size, len(input_ids), self.block_size)]
+            samples = [input_ids[max({0, start - self.history_size - self.block_size}): start] for start in range(self.block_size, len(input_ids), self.block_size)]
             
             
             # samples = [input_ids[start: start + self.block_size] for start in range(self.history_size, len(input_ids), self.block_size)]
@@ -324,7 +324,7 @@ if __name__ == '__main__':
                                     collate_fn=collate_fn, **kwargs)
 
     # get validation dataset
-    max_samples = 20000 if args.validate_only else 100
+    max_samples = 5000 if args.validate_only else 100
     # max_samples = 100
     valid_dataloader = None
     logger.info(f'preparing validation data')
@@ -504,11 +504,11 @@ if __name__ == '__main__':
                     try:
                         logger.info(f'y: {tokenizer.decode(lab)[:100]}')
                     except OverflowError as e:
-                        logger.info(f"Error in decoding labels: {e}, {lab}")
+                        logger.info(f"Error in decoding labels: {e}, {lab[:100]}")
                     try:
                         logger.info(f'y: {tokenizer.decode(pred)[:100]}')
                     except OverflowError as e:
-                        logger.info(f"Error in decoding predictions: {e}, {pred}")
+                        logger.info(f"Error in decoding predictions: {e}, {pred[:100]}")
                     
                     logger.info('-' * 50)
         try:
