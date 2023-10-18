@@ -232,14 +232,18 @@ if __name__ == '__main__':
             labels = tokenizer.batch_encode_plus(list(target_text), padding=False)
 
             full_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 2] + [gen_token] + l + [eos_token]) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
+            labels_mask = [torch.zeros_like(i).bool() for i in full_inputs]
+            for i, l in enumerate(labels['input_ids']):
+                labels_mask[i][-len(l) - 2:] = True
+
             full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
+            labels_mask = pad_sequence(labels_mask, padding_value=False).T
 
             gen_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 2] + [gen_token]) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
             gen_inputs = pad_sequence(gen_inputs, padding_value=tokenizer.pad_token_id).T
             
-            labels_mask = torch.zeros_like(full_inputs).bool()
-            for i, l in enumerate(labels['input_ids']):
-                labels_mask[i, -len(l) - 2:] = True
+            # labels_mask = torch.zeros_like(full_inputs).bool()
+            
 
             collated['input_ids'] = collated['labels'] = full_inputs
             collated['input_ids_generate'] = gen_inputs
@@ -364,6 +368,8 @@ if __name__ == '__main__':
         data = {}
         if 'generation_outputs' in output:
             data['labels'] = batch['target_text']
+            data['input_ids'] = batch['input_ids']
+            data['labels_mask'] = batch['labels_mask']
 
             data['generation_outputs'] = output['generation_outputs']
             # if 'labels_mask' in batch:
@@ -397,12 +403,14 @@ if __name__ == '__main__':
             y = data['labels']
             p = tokenizer.batch_decode(data['generation_outputs'], skip_special_tokens=True)
 
+            # labels = [l[m] for l, m in zip(data['labels'], data['labels_mask'])]
+
             metrics['exact_match'] = np.mean([y_ == p_[:len(y_)] for p_, y_ in zip (p, y)])
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
                     logger.info(f'y: {y[i][:250]}')
                     logger.info(f'p: {p[i][:250]}')
-                    logger.info(f'y ids: {len(data["labels"][i]), data["labels"][i][:50]}')
+                    # logger.info(f'y ids: {len(labels[i]), labels[i][:50]}')
                     logger.info(f'p ids: {len(data["generation_outputs"][i]), data["generation_outputs"][i][:50]}')
 
                     logger.info('-' * 50)

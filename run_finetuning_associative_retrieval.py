@@ -500,3 +500,4 @@ if __name__ == '__main__':
         #     trainer.validate(test_dataloader, write_tb=True, split='test')
     # except Exception as e:
     #     print(f"Got exception: {e}")
+    print('Done!')

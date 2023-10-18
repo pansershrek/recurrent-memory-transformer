@@ -125,6 +125,7 @@ parser.add_argument('--use_lora', action='store_true', default=False, help='')
 parser.add_argument('--lora_attn_dim', type=int, default=8, help='')
 parser.add_argument('--lora_attn_alpha', type=int, default=32, help='')
 parser.add_argument('--lora_dropout', type=float, default=0.1, help='')
+parser.add_argument('--layers_pattern', type=str, default=None, help='')
 
 # Parallel Adapter args
 parser.add_argument('--use_adapter', action='store_true', default=False, help='')
@@ -212,8 +213,10 @@ if __name__ == '__main__':
                 return []
             if args.min_tokens_in_document is not None and len(input_ids) < args.min_tokens_in_document:
                 return []
-            samples = [input_ids[max({0, start - self.history_size - self.block_size}): start] for start in range(self.block_size + self.history_size, len(input_ids), self.block_size)]
-            # samples = [input_ids[max({0, start - self.history_size - self.block_size}): start] for start in range(self.block_size, len(input_ids), self.block_size)]
+            if args.validate_only:
+                samples = [input_ids[max({0, start - self.history_size - self.block_size}): start] for start in range(self.block_size, len(input_ids), self.block_size)]
+            else:
+                samples = [input_ids[max({0, start - self.history_size - self.block_size}): start] for start in range(self.block_size + self.history_size, len(input_ids), self.block_size)]
             
             
             # samples = [input_ids[start: start + self.block_size] for start in range(self.history_size, len(input_ids), self.block_size)]
@@ -386,7 +389,8 @@ if __name__ == '__main__':
             inference_mode=False, 
             r=args.lora_attn_dim, 
             lora_alpha=args.lora_attn_alpha, 
-            lora_dropout=args.lora_dropout
+            lora_dropout=args.lora_dropout,
+            layers_pattern=args.layers_pattern
             )
         model = get_peft_model(model, peft_config)
         logger.info(f'Added LoRA, trainable parameters with LoRA only:')
@@ -484,7 +488,8 @@ if __name__ == '__main__':
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
     # scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
 
-    model, optimizer, _ = accelerator.prepare(model, optimizer, train_dataloader)
+    model, optimizer = accelerator.prepare(model, optimizer)
+    # model, optimizer, _ = accelerator.prepare(model, optimizer, train_dataloader)
 
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
