@@ -205,11 +205,15 @@ if __name__ == '__main__':
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     if args.model_type == 'decoder':
         from torch.nn.utils.rnn import pad_sequence
-        tokenizer.add_special_tokens({'additional_special_tokens': ['[GEN]', '[PAD]']})
-        gen_token = tokenizer.encode('[GEN]')[0]
-        tokenizer.pad_token_id = tokenizer.encode('[PAD]')[0]
+        # tokenizer.pad_token = tokenizer.eos_token
+        # tokenizer.pad_token_id = tokenizer.eos_token
+        # tokenizer.add_special_tokens({'additional_special_tokens': ['[GEN]', '[PAD]']})
+        # gen_token = tokenizer.encode('[GEN]')[0]
+        # tokenizer.pad_token_id = tokenizer.encode('[PAD]')[0]
         eos_token = tokenizer.eos_token_id
         
+        gen_token = tokenizer.encode('generate')[0]
+        tokenizer.pad_token_id = tokenizer.encode('pad')[0]
         id_pad_value = tokenizer.pad_token_id
 
         block_size = args.input_size
@@ -294,8 +298,8 @@ if __name__ == '__main__':
         logger.info(f'Loading pretrained model: {args.from_pretrained}')
         model = model_cls.from_pretrained(args.from_pretrained)
 
-    # add [GEN] token
-    model.resize_token_embeddings(len(tokenizer))
+    ## add [GEN] token
+    # model.resize_token_embeddings(len(tokenizer))
     
     ## load cpt of backbone model
     if args.backbone_cpt:
@@ -325,10 +329,6 @@ if __name__ == '__main__':
         if args.model_cpt:
             model_cpt = os.path.join(args.model_cpt, "model_best/pytorch_model.bin")
             cpt = torch.load(model_cpt, map_location='cpu')
-            vocab_size = model.memory_cell.model.gpt_neox.embed_in.weight.shape[0]
-            cpt_vocab_size = cpt['memory_cell.model.gpt_neox.embed_in.weight'].shape[0]
-            if vocab_size < cpt_vocab_size:
-                model.memory_cell.model.resize_token_embeddings(cpt_vocab_size)
             model.load_state_dict(cpt, strict=False)
             logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
 
