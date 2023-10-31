@@ -1,0 +1,17 @@
+Input example: 
+'Why was the fuel drained out of Hennessy\'s ship\'s tank?\n\n (A) Gwayne doesn\'t know\n (B) Hennessy drained it so they couldn\'t leave\n (C) it was destroyed by creatures from the planet\n (D) the blobs used it for energy\n\n\nSpawning Ground\n\n\n\n\n   By LESTER DEL REY\n\n\n\n\n   They weren\'t human. ...
+
+
+
+Full inputs: 
+
+["Why was the fuel drained out of Hennessy's ship's tank?\n\n (A) Gwayne doesn't know\n (B) Hennessy drained it so they couldn't leave\n (C) it was destroyed by creatures from the planet\n (D) the blobs used it for energy\n\n\nSpawning Ground\n\n\n\n\n   By LESTER DEL REY\n\n\n\n\n   They weren't human. They were something\n\n\n   more—and something less—they were,\n\n\n   in short, humanity's hopes for survival!\n\n\n\n\n   The Starship\n\n\n    Pandora\n\n\n   creaked and groaned as her landing pads settled\n unevenly in the mucky surface of the ugly world outside. She seemed to\n be restless to end her fool's errand here, two hundred light years from\n the waiting hordes on Earth. Straining metal plates twanged and echoed\n through her hallways.\n\n\n\n\n   Captain Gwayne cursed and rolled over, reaching for his boots. He was\n a big, rawboned man, barely forty; but ten years of responsibility\n had pressed down his shoulders and put age-feigning hollows under[GEN]Hennessy drained it so they couldn't leave<|endoftext|>", 
+
+"What native experiences didn't Eckert experience towards the end of the text?\n\n (A) their music\n (B) their food\n (C) their religion\n (D) their dances\n\n\nTHE FIRE and THE SWORD\n\n\n\n\n   By FRANK M. ROBINSON\n\n\n\n\n   Illustrated by EMSH\n\n\n\n\n   Nothing could have seemed pleasanter than that\n\n\n   peaceful planet. Then why was a non-suicidal\n\n\n   man driven to suicide there? Yet it made sense.\n\n\n\n\n\n\n\n\n    Why do people commit suicide?\n\n\n\n\n\n\n   Templin tightened his safety belt and lay back on the acceleration\n bunk. The lights in the cabin dimmed to a dull, red glow that meant the\n time for takeoff was nearing. He could hear noises from deep within\n the ship and the tiny whir of the ventilator fan, filling the air with\n the sweetish smell of sleeping gas. To sleep the trip away was better\n than to face the dull monotony of the stars for days on end.\n\n\n\n\n\n\n    Oh, they kill themselves for lots of reasons. Maybe ill health or\n financial messes or family difficulties. An unhappy love affair. Or\n[GEN]their religion<|endoftext|>"]
+
+
+Labels text
+["[GEN]Hennessy drained it so they couldn't leave<|endoftext|>", '[GEN]their religion<|endoftext|>']
+
+
+[(22930, 'Hen', 16.133520126342773), (1255, 'ness', 4.141091346740723), (90, 'y', 0.8997377157211304), (31817, ' drained', 12.545378684997559), (352, ' it', 5.165323257446289), (594, ' so', 6.713564395904541), (597, ' they', 5.4767537117004395), (4571, ' couldn', 4.952146053314209), (626, "'t", 0.03322934731841087), (3553, ' leave', 6.108515739440918), (0, '<|endoftext|>', 1232.78173828125), (14094, 'their', 13.349512100219727), (9596, ' religion', 8.466564178466797), (0, '<|endoftext|>', 1235.561279296875)]

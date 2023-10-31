@@ -53,6 +53,46 @@ class MemoryCellGenerate(MemoryCell):
             mask[:, self.num_mem_tokens: self.num_mem_tokens + attention_mask.shape[1]] = attention_mask
             return mask
         
+class MemoryCellCustomMemoryV0(MemoryCell):
+    def forward(self, input_ids, memory_state=None, **kwargs):
+        if memory_state is None:
+            memory_state = self.set_memory(input_ids.shape)
+
+        out = self.model(input_ids=input_ids, memory_state=memory_state, **kwargs)
+
+        return out, out.memory_state
+    
+    def generate(self, input_ids, memory_state, **generate_kwargs):
+        if memory_state is None:
+            memory_state = self.set_memory(input_ids.shape)
+
+        out = self.model.generate(input_ids, memory_state, **generate_kwargs)
+        return out
+    
+
+class MemoryCellCustomMemoryV1(MemoryCell):
+    def forward(self, input_ids, memory_state=None, **kwargs):
+        if memory_state is None:
+            memory_state = self.set_memory(input_ids.shape)
+        self.memory_state = memory_state
+        self.add_write_memory = True
+
+        out = self.model(input_ids=input_ids, **kwargs)
+        memory_state = self.memory_state
+
+        return out, memory_state
+    
+    def generate(self, input_ids, memory_state=None, **generate_kwargs):
+        if memory_state is None:
+            memory_state = self.set_memory(input_ids.shape)
+        
+        self.memory_state = memory_state
+        self.add_write_memory = False
+
+        out = self.model.generate(input_ids, **generate_kwargs)
+
+        return out
+        
 
 # class MemoryCellNoPosEnc(MemoryCell):
 #     def __init__(self, base_model, num_mem_tokens):

@@ -205,9 +205,9 @@ if __name__ == '__main__':
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     if args.model_type == 'decoder':
         from torch.nn.utils.rnn import pad_sequence
-        tokenizer.add_special_tokens({'additional_special_tokens': ['[GEN]', '[PAD]']})
-        gen_token = tokenizer.encode('[GEN]')[0]
-        tokenizer.pad_token_id = tokenizer.encode('[PAD]')[0]
+        # tokenizer.add_special_tokens({'additional_special_tokens': ['[GEN]', '[PAD]']})
+        gen_token = tokenizer.encode('GEN')[0]
+        tokenizer.pad_token_id = tokenizer.encode('PAD')[0]
         eos_token = tokenizer.eos_token_id
         
         id_pad_value = tokenizer.pad_token_id
@@ -216,33 +216,43 @@ if __name__ == '__main__':
         if args.num_mem_tokens not in {0, None}:
             block_size -= 2 * args.num_mem_tokens
 
+        q_tok = tokenizer.encode('Question: ')
+        c_tok = tokenizer.encode('Context: ')
+        a_tok = tokenizer.encode('Answer: ')
+        n_new_tokens = len(q_tok) + len(c_tok) + len(q_tok) + len(a_tok) + 1
+
         def collate_fn(batch):
             inputs = [b['input'][:args.input_seq_len * 10] for b in batch]
+            questions = [i[:i.index('\n\n')] for i in inputs]
+            contexts = [i[i.index('\n\n') + 2:] for i in inputs]
+
             if 'outputs' in batch[0]:
                 # if we have more than 1 label per example (only in valid) take only one of them
                 # to compute loss on valid
                 target_text = [b['outputs'][0][:args.input_seq_len * 10] for b in batch]
             else:
                 target_text = [b['output'][:args.input_seq_len * 10] for b in batch]
-            # labels = [b['output'][:args.input_seq_len * 10] for b in batch]
 
             collated = {}
-            inputs = tokenizer.batch_encode_plus(list(inputs), max_length=args.input_seq_len, truncation=True, padding=False)
-            labels = tokenizer.batch_encode_plus(list(target_text), padding=False)
+            questions = tokenizer.batch_encode_plus(questions, max_length=args.input_seq_len, truncation=True, padding=False)['input_ids']
+            contexts = tokenizer.batch_encode_plus(contexts, max_length=args.input_seq_len, truncation=True, padding=False)['input_ids']
+            labels = tokenizer.batch_encode_plus(target_text, max_length=args.target_seq_len, truncation=True, padding=False)['input_ids']
 
-            full_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 2] + [gen_token] + l + [eos_token]) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
+            full_inputs = [q_tok + q + c_tok + c[:args.input_seq_len - 2*len(q) - len(a) - n_new_tokens] + \
+                        q_tok + q + a_tok + a + [eos_token] for q, c, a in zip(questions, contexts, labels)]
+            full_inputs = [torch.tensor(i) for i in full_inputs]
             labels_mask = [torch.zeros_like(i).bool() for i in full_inputs]
-            for i, l in enumerate(labels['input_ids']):
+
+            for i, l in enumerate(labels):
                 labels_mask[i][-len(l) - 2:] = True
 
-            full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
-            labels_mask = pad_sequence(labels_mask, padding_value=False).T
+            full_inputs = pad_sequence([t.flip(dims=[0]) for t in full_inputs], padding_value=tokenizer.pad_token_id, batch_first=True).flip(dims=[1])
+            labels_mask = pad_sequence([t.flip(dims=[0]) for t in labels_mask], padding_value=False, batch_first=True).flip(dims=[1])
 
-            gen_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 2] + [gen_token]) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
-            gen_inputs = pad_sequence(gen_inputs, padding_value=tokenizer.pad_token_id).T
-            
-            # labels_mask = torch.zeros_like(full_inputs).bool()
-            
+            gen_inputs = [q_tok + q + c_tok + c[:args.input_seq_len - 2*len(q) - len(a) - n_new_tokens] + \
+                        q_tok + q + a_tok for q, c, a in zip(questions, contexts, labels)]
+            gen_inputs = [torch.tensor(i) for i in gen_inputs]
+            gen_inputs = pad_sequence([t.flip(dims=[0]) for t in gen_inputs], padding_value=tokenizer.pad_token_id, batch_first=True).flip(dims=[1])
 
             collated['input_ids'] = collated['labels'] = full_inputs
             collated['input_ids_generate'] = gen_inputs
@@ -252,10 +262,9 @@ if __name__ == '__main__':
 
             collated['id'] = [b['id'] for b in batch]
             collated['target_text'] = target_text
-            # for k, v in collated.items():
-            #     if hasattr(v, 'shape'):
-            #             print(k, v.shape)
+
             return collated
+
     else:
         raise NotImplementedError(f'Unknown model type {args.model_type}')
 
@@ -294,8 +303,8 @@ if __name__ == '__main__':
         logger.info(f'Loading pretrained model: {args.from_pretrained}')
         model = model_cls.from_pretrained(args.from_pretrained)
 
-    # add [GEN] token
-    model.resize_token_embeddings(len(tokenizer))
+    ## add [GEN] token
+    # model.resize_token_embeddings(len(tokenizer))
     
     ## load cpt of backbone model
     if args.backbone_cpt:
@@ -323,6 +332,7 @@ if __name__ == '__main__':
 
         ## load cpt of rmt
         if args.model_cpt:
+            logger.info(f'Loaded rmt state dict from: {args.model_cpt}')
             model_cpt = os.path.join(args.model_cpt, "model_best/pytorch_model.bin")
             cpt = torch.load(model_cpt, map_location='cpu')
             vocab_size = model.memory_cell.model.gpt_neox.embed_in.weight.shape[0]

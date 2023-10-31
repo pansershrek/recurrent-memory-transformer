@@ -1,0 +1,112 @@
+
+
+Logits shape: torch.Size([2, 248, 50279])
+
+
+Flattened labels
+
+' in-domain data is used to continue pre-training?\n\nIntroduction\nThe proliferation of social media has provided a locus for use, and thereby collection, of figurative and creative language data, including irony BIBREF0. According to the Merriam-Webster online dictionary, irony refers to “the use of word to express something other than and especially the opposite of the literal meaning." A complex, controversial, and intriguing linguistic phenomenon, irony has been studied in disciplines such as linguistics, philosophy, and rhetoric. Irony detection also has implications for several NLP tasks such as sentiment analysis, hate speech detection, fake news detection, etc BIBREF0. Hence, automatic irony detection can potentially improve systems designed for each of these tasks. In this paper, we focus on learning irony. More specifically, we report our work submitted to the FIRE 2019 Arabic irony detection task (IDAT@FIRE2019). We focus our energy on an important angle of the problem–the small size of training data.\nDeep learning is the most successful under supervised conditions with large amounts of training data (tens-to-hundreds of thousands of examples). For most real-dialectal tweet data<|endoftext|> 
+
+
+"""
+
+Question:
+(What) other unsupervised models are used for comparison?
+
+Context: 
+\n\nIntroduction\nImproving unsupervised learning is of key importance for advancing machine learning methods, as to unlock access to almost unlimited amounts of data to be used as training resources. The majority of recent success stories of deep learning does not fall into this category but instead relied on supervised training (in particular in the vision domain). A very notable exception comes from the text and natural language processing domain, in the form of semantic word embeddings trained unsupervised BIBREF0, BIBREF1, BIBREF2. Within only a few years from their invention, such word representations – which are based on a simple matrix factorization model as we formalize below – are now routinely trained on very large amounts of raw text data, and have become ubiquitous building blocks of a majority of current state-of-the-art NLP applications.\nWhile very useful semantic representations are available for words, it remains challenging to produce and learn such semantic embeddings for longer 
+
+Question:
+(What) other unsupervised models are used for comparison?
+
+Answer:
+Sequential (Denoising) Autoencoder, TF-IDF BOW, SkipThought, FastSent, Siamese C-BOW, C-BOW, C-PHRASE, ParagraphVector
+
+<|endoftext|>
+
+"""
+
+
+
+
+
+Their tokens
+tensor([[  275,    14, 13517,   941,   310,   908,   281,  4035,   638,    14,
+         31158,    32,   187,   187, 14214,   187,   510,  9489,   273,  2675,
+          3420,   556,  2530,   247, 18519,   323,   897,    13,   285,  7624,
+          4849,    13,   273, 43888,   800,   285, 10995,  3448,   941,    13,
+          1690, 33740,   378,  5472, 15619,    17,    15,  4794,   281,   253,
+          7612,   363,   312,    14,  9770,  2971,  3909, 19034,    13, 33740,
+         10770,   281,   773,   783,   897,   273,  3159,   281,  3890,  1633,
+           643,   685,   285,  3340,   253,  7285,   273,   253, 22436,  4495,
+           449,   329,  2570,    13, 15620,    13,   285, 27807, 32019, 11562,
+            13, 33740,   556,   644,  5421,   275, 32870,   824,   347, 20365,
+          3397,    13, 11727,    13,   285, 26527,    15, 17826,    90,  5481,
+           671,   556, 12739,   323,  2067,   427, 13010,  8892,   824,   347,
+         21942,  1783,    13,  9239,  6519,  5481,    13, 15223,  3668,  5481,
+            13,  3966,   378,  5472, 15619,    17,    15,  7757,    13, 12077,
+         33740,  5481,   476,  7826,  3157,  2718,  4158,   323,  1016,   273,
+           841,  8892,    15,   496,   436,  2929,    13,   359,  2770,   327,
+          4715, 33740,    15,  3010,  5742,    13,   359,  1304,   776,   789,
+          9262,   281,   253, 12476,  1848,  6247, 26503, 33740,  5481,  4836,
+           313,  1838,  1194,    33,  6766,  1848,  9638,   481,   844,  2770,
+           776,  2341,   327,   271,  1774,  6907,   273,   253,  1895,  1253,
+           783,  1355,  1979,   273,  3733,   941,    15,   187, 30763,  4715,
+           310,   253,   954,  5547,   762, 22296,  2515,   342,  1781,  8322,
+           273,  3733,   941,   313,    85,   561,    14,   936,    14, 39179,
+            84,   273,  6763,   273,  6667,   481,  1198,   954,  1524,    14,
+         50277, 47816,   646,   267, 15975,   941,     0],
+        [  643,   440, 35421,  3210,   403,   908,   323,  5301,    32,   187,
+           187, 14214,   187,  3351, 40037,   440, 35421,  4715,   310,   273,
+          2234,  6349,   323, 26441,  5145,  4715,  3082,    13,   347,   281,
+         19444,  2289,   281,  2761, 25470,  8322,   273,   941,   281,   320,
+           908,   347,  3733,  5300,    15,   380,  5020,   273,  3332,  2323,
+          6281,   273,  3676,  4715,  1057,   417,  2965,   715,   436,  7140,
+           533,  3185, 15494,   327, 22296,  3733,   313,   249,  1798,   275,
+           253,  8113,  5028,   481,   329,  1077, 16613,  6517,  3249,   432,
+           253,  2505,   285,  3626,  3448,  5162,  5028,    13,   275,   253,
+           830,   273, 24705,  3159, 46234, 10166,   440, 35421,   378,  5472,
+         15619,    17,  1157,   378,  5472, 15619,    18,  1157,   378,  5472,
+         15619,    19,   964, 15092,   760,   247,  1643,  1107,   432,   616,
+          3688,    13,   824,  3159, 14237,  1108,   534,   403,  1754,   327,
+           247,  2969,  4315, 39401,  1566,   347,   359,  7473,   907,  2708,
+          1108,   403,  1024, 21774, 10166,   327,  1077,  1781,  8322,   273,
+          9305,  2505,   941,    13,   285,   452,  2489, 33079,  3652,  8336,
+           273,   247,  5020,   273,  1655,  1375,    14,  1171,    14,   783,
+            14,   435,   427, 13010,  4893,    15,   187,  6175,  1077,  4217,
+         24705, 14237,   403,  2130,   323,  3000,    13,   352,  4558, 11132,
+           281,  4711,   285,  3037,   824, 24705, 46234,   323,  3356, 50277,
+         21129,  1624,   313,    37, 15854,  2182,    10, 17252, 36465,    13,
+         22539,    14,  1838,    39,   378,  4290,    13, 48799,  1044,  1224,
+            13, 20715, 29710,    13, 10283,  1443,    70,   330,    14,    35,
+          4290,    13,   330,    14,    35,  4290,    13,   330,    14,  6663,
+            51,  9434,    13,  2956, 10094, 15219,     0]], device='cuda:0')
+
+Labels for loss calculation
+Sample 1:
+'dialectal tweet data <|endoftext|> 
+
+Sample 2:
+Sequential (Denoising) Autoencoder, TF-IDF BOW, SkipThought, FastSent, Siamese C-BOW, C-BOW, C-PHRASE, ParagraphVector <|endoftext|>'
+
+
+Losses
+
+tensor([1.4897e+01, 1.6591e+00, 5.7934e+00, 1.1709e+01, 3.6096e+00, 1.2295e+03,
+        1.3039e+01, 2.6170e+00, 4.8344e+00, 5.8631e+00, 7.3668e+00, 4.6659e+00,
+        1.1796e+00, 1.0177e+01, 1.5085e+00, 2.7732e+00, 1.0972e+01, 2.2837e+00,
+        6.1005e+00, 5.2443e-01, 7.4837e+00, 7.6052e+00, 2.1536e+00, 1.2596e+01,
+        9.3670e+00, 6.0227e+00, 1.8481e+00, 7.4196e+00, 8.0416e+00, 2.7656e+00,
+        1.0175e+01, 6.0340e+00, 2.3949e-02, 8.7809e+00, 3.4216e+00, 7.1516e+00,
+        1.5912e+00, 5.7011e-01, 4.6906e+00, 7.8746e-01, 2.5448e+00, 2.1144e-01,
+        6.7418e-01, 2.3145e+00, 1.4369e-01, 9.3148e+00, 3.9637e+00, 5.7167e+00,
+        3.3014e-01, 8.4675e+00, 4.6646e+00, 6.9229e+00, 1.2253e+03],
+       device='cuda:0', grad_fn=<NllLossBackward0>)
+
+
+
+Token - text - loss
+
+[(tensor(47816, device='cuda:0'), 'dial', 14.897146224975586), (tensor(646, device='cuda:0'), 'ect', 1.6591073274612427), (tensor(267, device='cuda:0'), 'al', 5.793419361114502), (tensor(15975, device='cuda:0'), ' tweet', 11.709383010864258), (tensor(941, device='cuda:0'), ' data', 3.609623908996582), (tensor(0, device='cuda:0'), '<|endoftext|>', 1229.490478515625), (tensor(21129, device='cuda:0'), 'Sequ', 13.038983345031738), (tensor(1624, device='cuda:0'), 'ential', 2.6169772148132324), (tensor(313, device='cuda:0'), ' (', 4.834383010864258), (tensor(37, device='cuda:0'), 'D', 5.863080978393555), (tensor(15854, device='cuda:0'), 'eno', 7.366819858551025), (tensor(2182, device='cuda:0'), 'ising', 4.665915489196777), (tensor(10, device='cuda:0'), ')', 1.179612398147583), (tensor(17252, device='cuda:0'), ' Auto', 10.176628112792969), ...]
+
+

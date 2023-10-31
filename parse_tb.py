@@ -147,13 +147,37 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 
 # # QAsper
 
-# path = Path('/home/bulatov/bulatov/RMT_light/runs/framework/qasper')
-# metric_names = ['f1']
-# target_cols = TGT_COLS + ['best_valid_f1']
-# out_path = 'results/qasper.csv'
+paths = [
+        '/home/jovyan/rmt/runs/qasper/',
+        ]
 
-# df = parse_to_df(path, target_cols, metric_names)
-# df.to_csv(out_path, index=False)
+paths = [Path(p) for p in paths]
+metric_names = ['f1']
+new_cols = ['backbone_cpt', 'k2', 'model_cpt']
+target_cols = TGT_COLS + ['best_valid_f1'] + new_cols
+out_path = 'results/qasper_decoder.csv'
+
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)
+
+
+
+# quality
+
+paths = [
+        '/home/jovyan/rmt/runs/quality/',
+        ]
+
+paths = [Path(p) for p in paths]
+metric_names = ['exact_match']
+new_cols = ['backbone_cpt', 'k2', 'model_cpt']
+target_cols = TGT_COLS + ['best_valid_exact_match'] + new_cols
+out_path = 'results/quality_decoder.csv'
+
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)
 
 
 # # Babi-long compare to curriculum
@@ -243,20 +267,20 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 # df = pd.concat(dfs)
 # df.to_csv(out_path, index=False)
 
-# Associative retrieval
+# # Associative retrieval
 
-paths = [
-        '/home/jovyan/rmt/runs/associative_retrieval_v3',
-        ]
+# paths = [
+#         '/home/jovyan/rmt/runs/associative_retrieval_v3',
+#         ]
 
-paths = [Path(p) for p in paths]
-metric_names = ['exact_match']
-target_cols = TGT_COLS + ['best_valid_exact_match', 'key_size', 'value_size', 'num_pairs']
-out_path = 'results/ar-v3.csv'
+# paths = [Path(p) for p in paths]
+# metric_names = ['exact_match']
+# target_cols = TGT_COLS + ['best_valid_exact_match', 'key_size', 'value_size', 'num_pairs']
+# out_path = 'results/ar-v3.csv'
 
-dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-df = pd.concat(dfs)
-df.to_csv(out_path, index=False)
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
 
 
 # # #wikitext
@@ -305,16 +329,6 @@ df.to_csv(out_path, index=False)
 # dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
 # df = pd.concat(dfs)
 # df.to_csv(out_path, index=False)
-
-
-# # quality
-
-# path = Path('/home/bulatov/bulatov/runs/finetune/debug/quality')
-# metric_names = ['exact_match']
-# target_cols = TGT_COLS + ['best_valid_exact_match']
-# out_path = 'results/quality_new.csv'
-
-# parse_to_csv(path, out_path, target_cols, metric_names)
 
 
 # # memtest

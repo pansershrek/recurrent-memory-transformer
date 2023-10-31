@@ -184,9 +184,6 @@ if __name__ == '__main__':
                 remove_columns=column_names,
                 desc="Running tokenizer on dataset",
             )
-        elif 'arxiv' in args.task_name:
-            # from datasets import load_from_disk
-            tokenized_datasets = datasets.load_from_disk('/home/bulatov/bulatov/datasets/arxiv_pile/processed/')
         else:
             raise ValueError(f"Unknown dataset {args.task_name}")
 

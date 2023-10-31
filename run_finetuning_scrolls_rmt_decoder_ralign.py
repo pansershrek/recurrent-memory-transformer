@@ -224,7 +224,6 @@ if __name__ == '__main__':
                 target_text = [b['outputs'][0][:args.input_seq_len * 10] for b in batch]
             else:
                 target_text = [b['output'][:args.input_seq_len * 10] for b in batch]
-            # labels = [b['output'][:args.input_seq_len * 10] for b in batch]
 
             collated = {}
             inputs = tokenizer.batch_encode_plus(list(inputs), max_length=args.input_seq_len, truncation=True, padding=False)
@@ -235,15 +234,12 @@ if __name__ == '__main__':
             for i, l in enumerate(labels['input_ids']):
                 labels_mask[i][-len(l) - 2:] = True
 
-            full_inputs = pad_sequence(full_inputs, padding_value=tokenizer.pad_token_id).T
-            labels_mask = pad_sequence(labels_mask, padding_value=False).T
+            full_inputs = pad_sequence([t.flip(dims=[0]) for t in full_inputs], padding_value=tokenizer.pad_token_id, batch_first=True).flip(dims=[1])
+            labels_mask = pad_sequence([t.flip(dims=[0]) for t in labels_mask], padding_value=False, batch_first=True).flip(dims=[1])
 
             gen_inputs = [torch.tensor(i[:args.input_seq_len - len(l) - 2] + [gen_token]) for i, l in zip(inputs['input_ids'], labels['input_ids'])]
-            gen_inputs = pad_sequence(gen_inputs, padding_value=tokenizer.pad_token_id).T
+            gen_inputs = pad_sequence([t.flip(dims=[0]) for t in gen_inputs], padding_value=tokenizer.pad_token_id, batch_first=True).flip(dims=[1])
             
-            # labels_mask = torch.zeros_like(full_inputs).bool()
-            
-
             collated['input_ids'] = collated['labels'] = full_inputs
             collated['input_ids_generate'] = gen_inputs
             collated['labels_mask'] = labels_mask
@@ -252,9 +248,6 @@ if __name__ == '__main__':
 
             collated['id'] = [b['id'] for b in batch]
             collated['target_text'] = target_text
-            # for k, v in collated.items():
-            #     if hasattr(v, 'shape'):
-            #             print(k, v.shape)
             return collated
     else:
         raise NotImplementedError(f'Unknown model type {args.model_type}')

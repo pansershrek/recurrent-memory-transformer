@@ -2,7 +2,7 @@ import math
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
-
+import transformers
 class MemoryCell(torch.nn.Module):
     def __init__(self, base_model, num_mem_tokens):
         super().__init__()

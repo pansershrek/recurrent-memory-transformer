@@ -50,7 +50,10 @@ parser.add_argument("--gradient_clipping", default=1.0)
 
 args = parser.parse_args()
 
-accel_config_path = "/home/jovyan/rmt/wip/accel_configs/exp/accelerate/deepspeed_fp16_tbs{}bs{}g{}c{}np{}.yaml"
+if args.fp16:
+    accel_config_path = "/home/jovyan/rmt/wip/accel_configs/exp/accelerate/deepspeed_fp16_tbs{}bs{}g{}c{}np{}.yaml"
+else:
+    accel_config_path = "/home/jovyan/rmt/wip/accel_configs/exp/accelerate/deepspeed_tbs{}bs{}g{}c{}np{}.yaml"
 accel_config_path = accel_config_path.format(args.train_batch_size,
                                             args.train_micro_batch_size_per_gpu,
                                             args.gradient_accumulation_steps,
@@ -70,9 +73,6 @@ deepspeed_config['train_batch_size'] = int(args.train_batch_size)
 deepspeed_config['train_micro_batch_size_per_gpu'] = int(args.train_micro_batch_size_per_gpu)
 deepspeed_config['gradient_accumulation_steps'] = int(args.gradient_accumulation_steps)
 deepspeed_config['gradient_clipping'] = float(args.gradient_clipping)
-
-
-
 
 
 print(f'Accelerate config {accel_config_path}')
