@@ -343,9 +343,9 @@ if __name__ == '__main__':
 
     ## load cpt of backbone model
     if args.backbone_cpt:
-        backbone_cpt = os.path.join(args.backbone_cpt, "model_best.pth")
+        backbone_cpt = os.path.join(args.backbone_cpt, "model_best/pytorch_model.bin")
         cpt = torch.load(backbone_cpt, map_location='cpu')
-        model.load_state_dict(cpt['model_state_dict'], strict=False)
+        model.load_state_dict(cpt, strict=False)
         logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
 
     # Pass memory settings to pretrained model
@@ -366,9 +366,9 @@ if __name__ == '__main__':
 
         ## load cpt of rmt
         if args.model_cpt:
-            model_cpt = os.path.join(args.model_cpt, "model_best.pth")
+            model_cpt = os.path.join(args.model_cpt, "model_best/pytorch_model.bin")
             cpt = torch.load(model_cpt, map_location='cpu')
-            model.load_state_dict(cpt['model_state_dict'], strict=False)
+            model.load_state_dict(cpt, strict=False)
             logger.info(f'Loaded RMT state dict from: {args.model_cpt}')
 
     if args.freeze_model_weights:
