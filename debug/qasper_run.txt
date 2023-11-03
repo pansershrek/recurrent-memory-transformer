@@ -1,0 +1,29 @@
+'Question: What in-domain data is used to continue pre-training?Context: Introduction\nThe proliferation of social media has provided a locus for use, and thereby collection, of figurative and creative language data, including irony BIBREF0. According to the Merriam-Webster online dictionary, irony refers to “the use of word to express something other than and especially the opposite of the literal meaning." A complex, controversial, and intriguing linguistic phenomenon, irony has been studied in disciplines such as linguistics, philosophy, and rhetoric. Irony detection also has implications for several NLP tasks such as sentiment analysis,
+
+Question: What in-domain data is used to continue pre-training?
+Context:  hate speech detection, fake news detection, etc BIBREF0. Hence, automatic irony detection can potentially improve systems designed for each of these tasks. In this paper, we focus on learning irony. More specifically, we report our work submitted to the FIRE 2019 Arabic irony detection task (IDAT@FIRE2019). We focus our energy on an important angle of the problem–the small size of training data.\nDeep learning is the most successful under supervised conditions with large amounts of training data (tens-to-hundreds of
+
+Question: What in-domain data is used to continue pre-training?
+Context: Introduction\nThe proliferation of social media has provided a locus for use, and thereby collection, of figurative and creative language data, including irony BIBREF0. According to the Merriam-Webster online dictionary, irony refers to “the use of word to express something other than and especially the opposite of the literal meaning." A complex, controversial, and intriguing linguistic phenomenon, irony has been studied in disciplines such as linguistics, philosophy, and rhetoric. Irony detection also has implications for several
+Answer: dialectal tweet data'
+
+
+
+
+
+'Question: which multilingual approaches do they compare with?
+Context: Introduction\nAlthough Neural Machine Translation (NMT) has dominated recent research on translation tasks BIBREF0, BIBREF1, BIBREF2, NMT heavily relies on large-scale parallel data, resulting in poor performance on low-resource or zero-resource language pairs BIBREF3. Translation between these low-resource languages (e.g., Arabic$\\rightarrow $Spanish) is usually accomplished with pivoting through a rich-resource language (such as English), i.e., Arabic (source) sentence is translated to English (pivot'
+
+'Question: which multilingual approaches do they compare with?
+Context: ) first which is later translated to Spanish (target) BIBREF4, BIBREF5. However, the pivot-based method requires doubled decoding time and suffers from the propagation of translation errors.\nOne common alternative to avoid pivoting in NMT is transfer learning BIBREF6, BIBREF7, BIBREF8, BIBREF9 which leverages a high-resource pivot$\\rightarrow $target model (parent) to initialize a low-resource source$\\rightarrow $target model (child) that is further optimized with a small amount'
+
+
+
+'Question: which multilingual approaches do they compare with?
+Context: Introduction\nAlthough Neural Machine Translation (NMT) has dominated recent research on translation tasks BIBREF0, BIBREF1, BIBREF2, NMT heavily relies on large-scale parallel data, resulting in poor performance on low-resource or zero-resource language pairs BIBREF3. Translation between these low-resource languages (e.g., Arabic$\\rightarrow $Spanish) is usually accomplished with pivoting through a rich-resource language (such as English), i.e., Arabic (source) sentence is translated to English (pivot
+
+Question: which multilingual approaches do they compare with?
+Context: ) first which is later translated to Spanish (target) BIBREF4, BIBREF5. However, the pivot-based method requires doubled decoding time and suffers from the propagation of translation errors.\nOne common alternative to avoid pivoting in NMT is transfer learning BIBREF6, BIBREF7, BIBREF8, BIBREF9 which leverages a high-resource pivot$\\rightarrow $target model (parent) to initialize a low-resource source$\\rightarrow $target model (child) that is further optimized with a small amount
+
+Question: which multilingual approaches do they compare with?
+Context: Introduction\nAlthough Neural Machine Translation (NMT) has dominated recent research on translation tasks BIBREF0, BIBREF1, BIBREF2, NMT heavily relies on large-scale parallel data, resulting in poor performance on low-resource or zero-resource language pairs BIBREF3. Translation between these low-resource languages (e.g., Arabic$\\rightarrow $Spanish) is usually accomplished with pivoting through a rich-resource language (such as English), i.eAnswer: BIBREF19, BIBREF20<|endoftext|>'

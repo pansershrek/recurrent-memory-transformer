@@ -22,6 +22,9 @@ class MemoryCellGenerate(MemoryCell):
             memory_state = self.set_memory(input_ids.shape)
 
         seg_kwargs = self.process_input(input_ids, memory_state, attention_mask=attention_mask, write_mem=False)
+        # print("\n\nGeneration")
+        # print("inputs_embeds", seg_kwargs['inputs_embeds'].shape)
+        # print("generate_kwargs", generate_kwargs.keys(), generate_kwargs)
         out = self.model.generate(inputs_embeds=seg_kwargs['inputs_embeds'], attention_mask=seg_kwargs['attention_mask'], **generate_kwargs)
         return out
 
@@ -92,6 +95,96 @@ class MemoryCellCustomMemoryV1(MemoryCell):
         out = self.model.generate(input_ids, **generate_kwargs)
 
         return out
+    
+
+from modeling_rmt.language_modeling import RecurrentWrapper
+class RecurrentWrapperAllMemories(RecurrentWrapper):
+    def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
+        segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+
+        cell_outputs = []
+        memory_states = [self.memory_cell.set_memory(input_ids.shape)]
+        for seg_num, segment in enumerate(segmented):
+            cell_out, memory_state = self.memory_cell(**segment, memory_states=memory_states, output_hidden_states=True)
+            self.manage_gradients(memory_state, seg_num)
+            memory_states.append(memory_state)
+            cell_outputs.append(cell_out)
+
+        out = self.process_outputs(cell_outputs, labels=labels, 
+                                   labels_mask=labels_mask,
+                                   output_attentions=output_attentions, 
+                                   output_hidden_states=output_hidden_states)
+        return out
+    
+    def generate(self, input_ids, attention_mask=None, **generate_kwargs):
+        segmented = self.segment(input_ids=input_ids, attention_mask=attention_mask)
+
+        memory_states = [self.memory_cell.set_memory(input_ids.shape)]
+        for seg_num, segment in enumerate(segmented[:-1]):
+            cell_out, memory_state = self.memory_cell(**segment, memory_states=memory_states, output_hidden_states=True)
+            memory_states.append(memory_state)
+
+        final_segment = segmented[-1]
+        out = self.memory_cell.generate(**final_segment, memory_states=memory_states, **generate_kwargs)
+
+        return out
+    
+class MemoryCellAllMemories(MemoryCellGenerate):
+    def forward(self, input_ids, memory_states=None, **kwargs):
+        seg_kwargs = self.process_input(input_ids, memory_states, write_mem=True, **kwargs)
+        out = self.model(**seg_kwargs)
+        out, new_memory_state = self.process_output(out, memory_states, **kwargs)
+
+        return out, new_memory_state
+    
+    def generate(self, input_ids, memory_states, attention_mask=None, **generate_kwargs):
+        seg_kwargs = self.process_input(input_ids, memory_states, attention_mask=attention_mask, write_mem=False)
+        out = self.model.generate(inputs_embeds=seg_kwargs['inputs_embeds'], attention_mask=seg_kwargs['attention_mask'], **generate_kwargs)
+        return out
+
+    def process_input(self, input_ids, memory_states, write_mem, **kwargs):
+        seg_kwargs = dict(**kwargs)
+
+        inputs_embeds = kwargs.get('inputs_embeds')
+        if inputs_embeds is None:
+            inputs_embeds = self.model.get_input_embeddings()(input_ids)
+        
+        if self.num_mem_tokens > 0:
+            if write_mem:
+                inputs_embeds = torch.cat([*memory_states, inputs_embeds, memory_states[-1]], dim=1)
+            else:
+                inputs_embeds = torch.cat([*memory_states, inputs_embeds], dim=1)
+
+        seg_kwargs['input_ids'] = None
+        seg_kwargs['inputs_embeds'] = inputs_embeds
+        if kwargs.get('attention_mask') is not None:
+            seg_kwargs['attention_mask'] = self.pad_attention_mask(kwargs['attention_mask'], inputs_embeds.shape)
+        seg_kwargs['output_hidden_states'] = True
+        return seg_kwargs
+    
+    def process_output(self, model_outputs, memory_states, **kwargs):
+        if self.num_mem_tokens not in {0, None}:
+            out = CausalLMOutputWithCrossAttentions()
+            memory_state = model_outputs.hidden_states[-1][:, -self.num_mem_tokens:]
+            out['logits'] = model_outputs.logits[:, self.num_mem_tokens * len(memory_states):-self.num_mem_tokens]
+            
+            if kwargs.get('output_hidden_states'):
+                out['hidden_states'] = [lh[:, self.num_mem_tokens * len(memory_states):-self.num_mem_tokens] for lh in model_outputs.hidden_states]
+            if kwargs.get('output_attentions'):
+                out['attentions'] = model_outputs['attentions']
+        else:
+            memory_state = None
+            out = model_outputs
+            
+        return out, memory_state 
+    
+    def pad_attention_mask(self, attention_mask, shape):
+        if self.num_mem_tokens in {0, None}:
+            return attention_mask
+        else:
+            mask = torch.ones(*shape[:2], dtype=torch.int64).to(attention_mask.device)
+            mask[:, self.num_mem_tokens: self.num_mem_tokens + attention_mask.shape[1]] = attention_mask
+            return mask
         
 
 # class MemoryCellNoPosEnc(MemoryCell):
