@@ -21,7 +21,7 @@ from lm_experiments_tools.trainer_accelerate import TrainerAccelerate as Trainer
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.distributed import DistributedSampler
 
-from peft import get_peft_model, LoraConfig, TaskType
+from peft import get_peft_model, LoraConfig, TaskType, prepare_model_for_int8_training
 # load_dotenv()
 
 logger_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -126,6 +126,7 @@ parser.add_argument('--lora_attn_dim', type=int, default=8, help='')
 parser.add_argument('--lora_attn_alpha', type=int, default=32, help='')
 parser.add_argument('--lora_dropout', type=float, default=0.1, help='')
 parser.add_argument('--layers_pattern', type=str, default=None, help='')
+parser.add_argument('--int8', action='store_true', default=False, help='')
 
 # Parallel Adapter args
 parser.add_argument('--use_adapter', action='store_true', default=False, help='')
@@ -393,6 +394,9 @@ if __name__ == '__main__':
             layers_pattern=args.layers_pattern
             )
         model = get_peft_model(model, peft_config)
+        if args.int8:
+            model = prepare_model_for_int8_training(model)
+
         logger.info(f'Added LoRA, trainable parameters with LoRA only:')
         model.print_trainable_parameters()
     
