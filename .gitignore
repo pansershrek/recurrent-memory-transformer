@@ -1,9 +1,15 @@
+# *e_exp
+# *_exp.*
+# */exp/*
+# .nfs*
+# results
+# notebooks
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
-images/
-# notebooks/
 *.py[cod]
 *$py.class
+
 
 # C extensions
 *.so
@@ -133,4 +139,3 @@ dmypy.json
 .vscode/
 runs/
 data/*.tsv
-tests/runs/

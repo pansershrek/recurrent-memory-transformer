@@ -2,7 +2,7 @@ import math
 import torch
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
-
+import transformers
 class MemoryCell(torch.nn.Module):
     def __init__(self, base_model, num_mem_tokens):
         super().__init__()
@@ -47,7 +47,8 @@ class MemoryCell(torch.nn.Module):
         inputs_embeds = kwargs.get('inputs_embeds')
         if inputs_embeds is None:
             inputs_embeds = self.model.get_input_embeddings()(input_ids)
-        inputs_embeds = torch.cat([memory_state, inputs_embeds, memory_state], dim=1)
+        if self.num_mem_tokens > 0:
+            inputs_embeds = torch.cat([memory_state, inputs_embeds, memory_state], dim=1)
 
         seg_kwargs['input_ids'] = None
         seg_kwargs['inputs_embeds'] = inputs_embeds
@@ -91,6 +92,9 @@ class RecurrentWrapper(torch.nn.Module):
     def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
         memory_state = None
         segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+        # print('\n\n\n\n\n\nsegmented', len(segmented))
+        # print('input_ids', input_ids.shape)
+        # print('segmented', segmented[0].shape)
 
         cell_outputs = []
         for seg_num, segment in enumerate(segmented):
@@ -104,7 +108,7 @@ class RecurrentWrapper(torch.nn.Module):
                                    output_hidden_states=output_hidden_states)
         return out
     
-    def generate(self, input_ids, attention_mask, **generate_kwargs):
+    def generate(self, input_ids, attention_mask=None, **generate_kwargs):
         memory_state = None
         segmented = self.segment(input_ids=input_ids, attention_mask=attention_mask)
 
@@ -165,7 +169,19 @@ class RecurrentWrapper(torch.nn.Module):
                 flat_labels = flat_labels[shift_mask.view(-1)]
                 flat_logits = flat_logits[shift_mask.view(-1)]
                 
+            # print('\n\n\n\nshift_labels: ', shift_labels)
+            # print('shift_logits: ', shift_logits)
+            # print('shift_mask: ', shift_mask)
+            # print([l[m].shape for l, m in zip(shift_labels, shift_mask)])
+            # if any([sum(m) == 0 for m in shift_mask]):
+                # print('\n\n\n\nshift_labels: ', shift_labels)
+                # print('shift_logits: ', shift_logits)
+                # print('shift_mask: ', shift_mask)
+                # raise ValueError
+            # # 1/0
             out['loss'] = loss_fct(flat_logits, flat_labels)
+            if out['loss'] is None:
+                raise ValueError
         else:
             out['loss'] = 0
 

@@ -80,6 +80,7 @@ parser.add_argument('--input_size', type=int, default=None, help='maximal input 
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
 parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
+parser.add_argument('--sampling_prob', type=float, default=1, help='Probability of sampling other number of segments')
 parser.add_argument('--sum_loss', action='store_true', default=False,
                     help='with this flag task loss from all segments is summed')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
@@ -233,7 +234,12 @@ if __name__ == '__main__':
             collated['labels_mask'] = labels_mask
 
         if getattr(args, 'vary_n_segments', False):
-            n_segments = random.randint(1, args.max_n_segments)
+            if getattr(args, 'sampling_prob', False):
+                random_value = torch.rand((1)).item()
+                if random_value > args.sampling_prob:
+                    return collated
+                
+            n_segments = random.randint(0, args.max_n_segments)
             n_tokens = n_segments * block_size
             for k in collated:
                 collated[k] = collated[k][:, -n_tokens:]
@@ -393,7 +399,10 @@ if __name__ == '__main__':
     # todo: group optimizer params
     optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)    
     if args.model_cpt or args.backbone_cpt:
-        optimizer.load_state_dict(cpt['optimizer_state_dict'])
+        try:
+            optimizer.load_state_dict(cpt['optimizer_state_dict'])
+        except(ValueError):
+                logger.info(f"Error loading optimizer state.")
 
     # for encoder only classification
     def keep_for_metrics_fn(batch, output):
