@@ -126,7 +126,7 @@ class NoiseInjectionDataset(Dataset):
         possible_positions = range(len(background_text) + 1) 
         fact_positions = np.random.choice(possible_positions, len(facts_tok))
         fact_positions.sort()
-
+        sample['fact_positions'] = fact_positions       # positions of facts between noise sentences
         updated_sample = [[] for _ in range(len(background_text) + 1)] 
         for fact, pos in zip(facts_tok, fact_positions):
             updated_sample[pos].append(fact)
