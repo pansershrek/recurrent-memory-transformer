@@ -145,4 +145,4 @@ class NoiseInjectionDataset(Dataset):
         return sample
     
     def __len__(self):
-        return self.task_dataset
+        return len(self.task_dataset)
