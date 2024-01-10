@@ -33,7 +33,7 @@ def get_dataset_df(dataset_path):
     single_question_slices = []
     for sample in initial_samples:
         answer_positions = sample[~sample.answer.isna()].index
-        slices = [sample[:ans_pos+1] for ans_pos in answer_positions]
+        slices = [sample.loc[:ans_pos].copy() for ans_pos in answer_positions]
         for i, slc in enumerate(slices):
             slices[i] = slc[(slc.answer.isna()) | (slc.index == slc.index[-1])]
         single_question_slices += slices
