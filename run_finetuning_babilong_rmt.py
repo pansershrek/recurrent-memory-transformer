@@ -53,6 +53,7 @@ parser = HfArgumentParser(TrainerArgs)
 parser.add_argument('--task_dataset', type=str, help="Task name", default="qa1_single-supporting-fact")
 parser.add_argument('--noise_dataset', type=str, help="Task name", default='wikitext')
 parser.add_argument('--noise_dataset_split', type=str, help="Task name", default='wikitext-2-raw-v1')
+parser.add_argument('--babi_path', type=str, help="path to babi folder", default="data/tasks_1-20_v1-2/en-10k")
 
 
 parser.add_argument('--validate_only', action='store_true', default=False,
@@ -183,8 +184,8 @@ if __name__ == '__main__':
     noise_dataset = datasets.load_dataset(args.noise_dataset, args.noise_dataset_split)
     
     # task dataset 
-    train_path = f"/home/jovyan/rmt/datasets/babi/data/tasks_1-20_v1-2/en-10k/{args.task_dataset}_train.txt"
-    test_path = f"/home/jovyan/rmt/datasets/babi/data/tasks_1-20_v1-2/en-10k/{args.task_dataset}_test.txt"
+    train_path = os.path.join(args.babi_path, f"{args.task_dataset}_train.txt")
+    test_path = os.path.join(args.babi_path, f"{args.task_dataset}_test.txt")
 
     task_dataset_train = TaskDataset(train_path)
     task_dataset_test = TaskDataset(test_path)
@@ -383,26 +384,16 @@ if __name__ == '__main__':
         metrics = {}
         if 'predictions' in data:
             y, p = data['labels'], data['predictions']
-            metrics['exact_match'] = np.mean([y_ == p_[:len(y_)] for p_, y_ in zip (p, y)])
+            predicted_labels = tokenizer.batch_decode(data['predicted_labels'])
+            metrics['exact_match'] = np.mean([text == pred for text, pred in zip (data['target_text'], predicted_labels)])
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
                     logger.info(f'y: {y[i][:100]}')
                     logger.info(f'p: {p[i][:100]}')
-                    # pred = p[i][p[i] != -100]
-                    # lab = y[i][y[i] != -100]
-                    # logger.info(f'pred: {pred}')
-                    # logger.info(f'lab: {lab}')
-                    pred = p[i]
-                    lab = y[i]
-                    try:
-                        logger.info(f'y: {tokenizer.decode(lab)[:100]}')
-                    except OverflowError as e:
-                        logger.info(f"Error in decoding labels: {e}, {lab}")
-                    try:
-                        logger.info(f'y: {tokenizer.decode(pred)[:100]}')
-                    except OverflowError as e:
-                        logger.info(f"Error in decoding predictions: {e}, {pred}")
-                    
+
+                    logger.info(f"y_text: {data['target_text'][i]}")
+                    logger.info(f"p_text: {predicted_labels[i]}")
+
                     logger.info('-' * 50)
         try:
             perplexity = math.exp(data["loss"].mean())
