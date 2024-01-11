@@ -18,10 +18,10 @@ TBS=256
 
 INPUT_SIZE=2048
 
-MAX_N_SEGMENTSS=(1)
-BSS=(4)
+MAX_N_SEGMENTSS=(2)
+BSS=(2)
 
-for MEMORY_SIZE in 0
+for MEMORY_SIZE in 2
 do 
 
 for N in 1
@@ -53,10 +53,10 @@ SAMPLING_PROB=1
 
 
 NP=$NP
-ACCEL_CONFIG=./accel_configs/exp/accelerate/deepspeed_fp16_tbs${TBS}bs${BS}g${GRAD_ACC_STEPS}c1.0np${NP}.yaml
+ACCEL_CONFIG=./accel_configs/exp/accelerate/deepspeed_bf16_tbs${TBS}bs${BS}g${GRAD_ACC_STEPS}c1.0np${NP}.yaml
 cd accel_configs/
 python create_config.py \
-        --fp16 \
+        --bf16 \
         --train_batch_size $TBS\
         --train_micro_batch_size_per_gpu $BS\
         --gradient_accumulation_steps $GRAD_ACC_STEPS\
@@ -74,7 +74,7 @@ do
 echo RUNNING: TASK_NAME MEMORY_SIZE INPUT_SIZE BLOCK_SIZE HISTORY_SIZE N_SEG  MODEL_NAME MODEL_CLS LR N
 echo RUNNING: $TASK_NAME $MEMORY_SIZE $INPUT_SIZE $BLOCK_SIZE $HISTORY_SIZE $MAX_N_SEGMENTS $MODEL_NAME $MODEL_CLS  $LR $N
 echo gradient accumulation steps $GRAD_ACC_STEPS
-accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29516 run_finetuning_pile_rmt_llama_v2.py \
+accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29517 run_finetuning_pile_rmt_llama_v2.py \
         --task_name $TASK_NAME \
         --model_path ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${BLOCK_SIZE}-${HISTORY_SIZE}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_lora/run_$N \
         --from_pretrained $MODEL_NAME \

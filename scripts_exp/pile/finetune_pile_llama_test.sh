@@ -9,8 +9,7 @@ CUDA_LAUNCH_BLOCKING=1
 MODEL_TYPE=decoder
 MEMORY_CELL=modeling_rmt.language_modeling:MemoryCell
 RECURRENT_WRAPPER=modeling_rmt.language_modeling:RecurrentWrapper
-# BACKBONE_CLS=base_models.modeling_llama:LlamaForCausalLM
-BACKBONE_CLS=transformers:LlamaForCausalLM
+BACKBONE_CLS=base_models.modeling_llama:LlamaForCausalLM
 TASK_NAME=pile
 
 ITERS=50000
@@ -19,7 +18,7 @@ TBS=256
 INPUT_SIZE=2048
 
 MAX_N_SEGMENTSS=(1)
-BSS=(4)
+BSS=(1)
 
 for MEMORY_SIZE in 0
 do 
@@ -27,8 +26,7 @@ do
 for N in 1
 do
 
-# for MODEL_NAME in meta-llama/Llama-2-7b-hf
-for MODEL_NAME in NousResearch/Llama-2-7b-hf
+for MODEL_NAME in meta-llama/Llama-2-7b-hf
 do
 
 for (( j=0; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
@@ -53,10 +51,10 @@ SAMPLING_PROB=1
 
 
 NP=$NP
-ACCEL_CONFIG=./accel_configs/exp/accelerate/deepspeed_fp16_tbs${TBS}bs${BS}g${GRAD_ACC_STEPS}c1.0np${NP}.yaml
+ACCEL_CONFIG=./accel_configs/exp/accelerate/deepspeed_bf16_tbs${TBS}bs${BS}g${GRAD_ACC_STEPS}c1.0np${NP}.yaml
 cd accel_configs/
 python create_config.py \
-        --fp16 \
+        --bf16 \
         --train_batch_size $TBS\
         --train_micro_batch_size_per_gpu $BS\
         --gradient_accumulation_steps $GRAD_ACC_STEPS\
@@ -74,9 +72,9 @@ do
 echo RUNNING: TASK_NAME MEMORY_SIZE INPUT_SIZE BLOCK_SIZE HISTORY_SIZE N_SEG  MODEL_NAME MODEL_CLS LR N
 echo RUNNING: $TASK_NAME $MEMORY_SIZE $INPUT_SIZE $BLOCK_SIZE $HISTORY_SIZE $MAX_N_SEGMENTS $MODEL_NAME $MODEL_CLS  $LR $N
 echo gradient accumulation steps $GRAD_ACC_STEPS
-accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29516 run_finetuning_pile_rmt_llama_v2.py \
+accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29522 run_finetuning_pile_rmt_llama.py \
         --task_name $TASK_NAME \
-        --model_path ../runs/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${BLOCK_SIZE}-${HISTORY_SIZE}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_lora/run_$N \
+        --model_path ../runs/test/${TASK_NAME}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${BLOCK_SIZE}-${HISTORY_SIZE}-${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_lora_test/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
@@ -89,10 +87,10 @@ accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29516 run_fine
         --num_mem_tokens $MEMORY_SIZE \
         --max_n_segments $MAX_N_SEGMENTS\
         --vary_n_segments \
+        --min_tokens_in_document 2040 \
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --num_training_steps $((ITERS*2)) \
         --iters $ITERS \
-        --save_best \
         --k2 $K2 \
         --use_lora \
         --use_flash_attention \

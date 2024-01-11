@@ -25,8 +25,12 @@ accel_config = {
 }
 
 deepspeed_config = {
+    "bf16": {
+        "enabled": "auto"
+    },
+
     "fp16": {
-        "enabled": True
+        "enabled": "auto"
     },
     "zero_optimization": {
         "stage": 2
@@ -42,6 +46,7 @@ deepspeed_config = {
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--fp16", action='store_true', default=False)
+parser.add_argument("--bf16", action='store_true', default=False)
 parser.add_argument("--train_batch_size", default=256)
 parser.add_argument("--train_micro_batch_size_per_gpu", default=256)
 parser.add_argument("--gradient_accumulation_steps", default=1)
@@ -50,16 +55,20 @@ parser.add_argument("--gradient_clipping", default=1.0)
 
 args = parser.parse_args()
 
-if args.fp16:
-    accel_config_path = "/home/jovyan/rmt/wip/accel_configs/exp/accelerate/deepspeed_fp16_tbs{}bs{}g{}c{}np{}.yaml"
+if args.bf16:
+    precision = "bf16_"
+elif args.fp16:
+    precision = "fp16_"
 else:
-    accel_config_path = "/home/jovyan/rmt/wip/accel_configs/exp/accelerate/deepspeed_tbs{}bs{}g{}c{}np{}.yaml"
+    precision = ""
+
+accel_config_path = "/home/jovyan/rmt/wip/accel_configs/exp/accelerate/deepspeed_" + precision + "tbs{}bs{}g{}c{}np{}.yaml"
 accel_config_path = accel_config_path.format(args.train_batch_size,
                                             args.train_micro_batch_size_per_gpu,
                                             args.gradient_accumulation_steps,
                                             args.gradient_clipping, 
                                             args.np)
-deepspeed_config_path = "/home/jovyan/rmt/wip/accel_configs/exp/deepspeed/0s2_tbs{}bs{}g{}c{}.json"
+deepspeed_config_path = "/home/jovyan/rmt/wip/accel_configs/exp/deepspeed/0s2_" + precision + "tbs{}bs{}g{}c{}.json"
 deepspeed_config_path = deepspeed_config_path.format(args.train_batch_size,
                                                      args.train_micro_batch_size_per_gpu,
                                                      args.gradient_accumulation_steps,
@@ -69,6 +78,7 @@ accel_config['num_processes'] = int(args.np)
 accel_config['deepspeed_config']['deepspeed_config_file'] = deepspeed_config_path
 
 deepspeed_config['fp16']['enabled'] = bool(args.fp16)
+deepspeed_config['bf16']['enabled'] = bool(args.bf16)
 deepspeed_config['train_batch_size'] = int(args.train_batch_size)
 deepspeed_config['train_micro_batch_size_per_gpu'] = int(args.train_micro_batch_size_per_gpu)
 deepspeed_config['gradient_accumulation_steps'] = int(args.gradient_accumulation_steps)

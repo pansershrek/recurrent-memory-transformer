@@ -49,19 +49,6 @@ from lm_experiments_tools.utils import get_cls_by_name, get_optimizer, prepare_r
 # all gpus set with CUDA_VISIBLE_DEVICES are visible to process, indexing from 0 to ...
 # torch.cuda.set_device(hvd.local_rank())
 
-### DEBUG MODE
-os.environ["TORCH_DISTRIBUTED_DEBUG"]="INFO"
-os.environ["NCCL_DEBUG"]="INFO"
-os.environ["NCCL_DEBUG_SUBSYS"]="ALL"
-
-os.environ['NCCL_BLOCKING_WAIT'] = '1'
-os.environ['NCCL_ASYNC_ERROR_HANDLING'] = '1'
-os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'INFO'
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ['TORCH_USE_CUDA_DSA'] = '1'
-
-from lm_experiments_tools.utils import get_distributed_rank
-
 parser = HfArgumentParser(TrainerAccelerateArgs)
 parser.add_argument('--task_name', type=str, help="Task name, wikitext, ...")
 parser.add_argument('--validate_only', action='store_true', default=False,
@@ -165,38 +152,17 @@ if __name__ == '__main__':
     from accelerate.utils import InitProcessGroupKwargs, DistributedDataParallelKwargs
     from datetime import timedelta
     
-    # way 1 - using env variables
-    os.environ['DEEPSPEED_TIMEOUT'] = '3'
-    
-    
-    # # way 2 - using torch distributed
     # import torch.distributed as dist
-    # dist.init_process_group(backend='nccl', timeout=timedelta(seconds=280)) 
-    # # dist.init_process_group(backend='nccl', init_method='env://', timeout=timedelta(seconds=5400)) 
-    
-    
-    # # way 3 - using deepspeed
-    # import deepspeed
-    # deepspeed.init_distributed(timeout=timedelta(seconds=290))
-    # # deepspeed.init_process_group(timeout=timedelta(seconds=5400)) 
+    # dist.init_process_group(backend='nccl', timeout=timedelta(seconds=5400)) 
 
-    # way 4 - using Accelerator kwargs -- overwritten by deepspeed parameters
+
+    # init_kwargs = InitProcessGroupKwargs
+    # init_kwargs.timeout = timedelta(minutes=90)
+
     accelerator = accelerate.Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps,
                                         #  kwargs_handlers=[init_kwargs],
-                                         kwargs_handlers=[InitProcessGroupKwargs(timeout=timedelta(seconds=300))]
+                                        #  kwargs_handlers=[InitProcessGroupKwargs(timeout=timedelta(seconds=5400))]
                                          )
-    
-    # # way 2 - using torch distributed
-    # import torch.distributed as dist
-    # dist.init_process_group(backend='nccl', timeout=timedelta(seconds=310)) 
-    # # dist.init_process_group(backend='nccl', init_method='env://', timeout=timedelta(seconds=300)) 
-    
-    
-    # way 3 - using deepspeed
-    import deepspeed
-    deepspeed.init_distributed(timeout=timedelta(seconds=320))
-    
-    print("\n\n\n", accelerator.state)
     from accelerate.logging import get_logger
     logger = get_logger('')
 
@@ -342,10 +308,6 @@ if __name__ == '__main__':
             n_tokens = n_segments * block_size
             for k in collated:
                 collated[k] = collated[k][:, -n_tokens:]
-
-        rank = get_distributed_rank()
-        logger.info(f'rank: {rank}; input_ids shape: {input_ids.shape}\nlens: {[len(b) for b in batch]}')
-
         
         # print('\n\n\ninput_ids', input_ids.shape)
         # print('collated', collated)
@@ -572,8 +534,8 @@ if __name__ == '__main__':
             y, p = data['labels'], data['predictions']
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
-                    # logger.info(f'y: {y[i][:100]}')
-                    # logger.info(f'p: {p[i][:100]}')
+                    logger.info(f'y: {y[i][:100]}')
+                    logger.info(f'p: {p[i][:100]}')
                     # pred = p[i][p[i] != -100]
                     # lab = y[i][y[i] != -100]
                     # logger.info(f'pred: {pred}')

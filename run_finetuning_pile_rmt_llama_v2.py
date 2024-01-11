@@ -21,7 +21,7 @@ from lm_experiments_tools.trainer_accelerate import TrainerAccelerate as Trainer
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.distributed import DistributedSampler
 
-from peft import get_peft_model, LoraConfig, TaskType, prepare_model_for_int8_training
+from peft import get_peft_model, LoraConfig, TaskType, prepare_model_for_kbit_training
 # load_dotenv()
 
 logger_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -38,7 +38,7 @@ logger.info(f"CUDA_VISIBLE_DEVICES: {os.environ['CUDA_VISIBLE_DEVICES']}")
 logger.info(f"CUDA DEVICE COUNT: {torch.cuda.device_count()}")
 
 # import transformers  # noqa: E402
-from transformers import AutoConfig, AutoTokenizer, HfArgumentParser  # noqa: E402
+from transformers import AutoConfig, AutoTokenizer, HfArgumentParser, BitsAndBytesConfig  # noqa: E402
 
 from lm_experiments_tools.utils import get_cls_by_name, get_optimizer, prepare_run  # noqa: E402
 
@@ -140,6 +140,7 @@ parser.add_argument('--lora_attn_alpha', type=int, default=32, help='')
 parser.add_argument('--lora_dropout', type=float, default=0.1, help='')
 parser.add_argument('--layers_pattern', type=str, default=None, help='')
 parser.add_argument('--int8', action='store_true', default=False, help='')
+parser.add_argument('--int4', action='store_true', default=False, help='')
 
 parser.add_argument('--use_flash_attention', action='store_true', default=False, help='')
 
@@ -155,48 +156,50 @@ parser.add_argument('--min_tokens_in_document', type=int, default=None, help='do
 parser.add_argument('--max_tokens_in_document', type=int, default=None, help='do not use documents longer than this value')
 
 
+os.environ["TORCH_DISTRIBUTED_DEBUG"]="INFO"
+os.environ["NCCL_DEBUG"]="INFO"
+os.environ["NCCL_DEBUG_SUBSYS"]="ALL"
+
+os.environ['NCCL_BLOCKING_WAIT'] = '1'
+os.environ['NCCL_ASYNC_ERROR_HANDLING'] = '1'
+os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'INFO'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ['TORCH_USE_CUDA_DSA'] = '1'
+
 if __name__ == '__main__':
     args = parser.parse_args()
     # set current working dir
     args.working_dir = str(Path(args.working_dir).expanduser().absolute())
     os.chdir(args.working_dir)
 
-    # ### fix gather timeout error
-    from accelerate.utils import InitProcessGroupKwargs, DistributedDataParallelKwargs
-    from datetime import timedelta
+    # # ### fix gather timeout error
+    # from accelerate.utils import InitProcessGroupKwargs, DistributedDataParallelKwargs
+    # from datetime import timedelta
     
-    # way 1 - using env variables
-    os.environ['DEEPSPEED_TIMEOUT'] = '3'
-    
+    # # way 1 - using env variables
+    # os.environ['NCCL_BLOCKING_WAIT'] = '1'
+    # os.environ['NCCL_ASYNC_ERROR_HANDLING'] = '1'
+    # os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'INFO'
+    # os.environ['DEEPSPEED_TIMEOUT'] = '60'
     
     # # way 2 - using torch distributed
     # import torch.distributed as dist
-    # dist.init_process_group(backend='nccl', timeout=timedelta(seconds=280)) 
+    # dist.init_process_group(backend='nccl', timeout=timedelta(seconds=5600)) 
     # # dist.init_process_group(backend='nccl', init_method='env://', timeout=timedelta(seconds=5400)) 
     
     
     # # way 3 - using deepspeed
     # import deepspeed
-    # deepspeed.init_distributed(timeout=timedelta(seconds=290))
-    # # deepspeed.init_process_group(timeout=timedelta(seconds=5400)) 
+    # deepspeed.init_distributed(timeout=timedelta(seconds=5500)) 
+    # deepspeed.init_process_group(timeout=timedelta(seconds=5400)) 
 
     # way 4 - using Accelerator kwargs -- overwritten by deepspeed parameters
     accelerator = accelerate.Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps,
                                         #  kwargs_handlers=[init_kwargs],
-                                         kwargs_handlers=[InitProcessGroupKwargs(timeout=timedelta(seconds=300))]
+                                        #  kwargs_handlers=[InitProcessGroupKwargs(timeout=timedelta(seconds=5400))]
                                          )
     
-    # # way 2 - using torch distributed
-    # import torch.distributed as dist
-    # dist.init_process_group(backend='nccl', timeout=timedelta(seconds=310)) 
-    # # dist.init_process_group(backend='nccl', init_method='env://', timeout=timedelta(seconds=300)) 
-    
-    
-    # way 3 - using deepspeed
-    import deepspeed
-    deepspeed.init_distributed(timeout=timedelta(seconds=320))
-    
-    print("\n\n\n", accelerator.state)
+    # print("\n\n\n", accelerator.state)
     from accelerate.logging import get_logger
     logger = get_logger('')
 
@@ -417,42 +420,62 @@ if __name__ == '__main__':
 
     logger.info(f'Using model class: {model_cls}')
 
-    if args.use_adapter:
-        model_cfg = AutoConfig.from_pretrained(args.from_pretrained)
+    # if args.use_adapter:
+    #     model_cfg = AutoConfig.from_pretrained(args.from_pretrained)
 
-        model_cfg.use_parallel_adapter = args.use_adapter
-        model_cfg.parallel_adapter_mode = 'ffn'
-        model_cfg.adapter_bottleneck_dim = args.adapter_bottleneck_dim
-        model_cfg.adapter_dropout = args.adapter_dropout
-        model_cfg.adapter_scale = args.adapter_scale
+    #     model_cfg.use_parallel_adapter = args.use_adapter
+    #     model_cfg.parallel_adapter_mode = 'ffn'
+    #     model_cfg.adapter_bottleneck_dim = args.adapter_bottleneck_dim
+    #     model_cfg.adapter_dropout = args.adapter_dropout
+    #     model_cfg.adapter_scale = args.adapter_scale
 
+    #     model = model_cls(config=model_cfg)
+
+    #     logger.info(f'Loading pretrained model: {args.from_pretrained}')
+    #     base_model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False)
+
+    #     model.load_state_dict(base_model.state_dict(), strict=False)
+    #     del base_model
+    #     logger.info(f'Added adapters')
+
+    # else:
+    if not args.from_pretrained:
+        model_cfg = AutoConfig.from_pretrained(args.model_cfg)
         model = model_cls(config=model_cfg)
-
-        logger.info(f'Loading pretrained model: {args.from_pretrained}')
-        base_model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False)
-
-        model.load_state_dict(base_model.state_dict(), strict=False)
-        del base_model
-        logger.info(f'Added adapters')
-
     else:
-        if not args.from_pretrained:
-            model_cfg = AutoConfig.from_pretrained(args.model_cfg)
-            model = model_cls(config=model_cfg)
-        else:
-            logger.info(f'Loading pretrained model: {args.from_pretrained}')
-            model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False)
+        logger.info(f'Loading pretrained model: {args.from_pretrained}')
+        # model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False)
+        # BitsAndBytesConfig int-4 config
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=args.int4, 
+            load_in_8bit=args.int8, 
+            # load_in_4bit=True, 
+            # bnb_4bit_use_double_quant=True, 
+            # bnb_4bit_quant_type="nf4", 
+            # bnb_4bit_compute_dtype=torch.bfloat16
+        )
 
-    if args.use_flash_attention:
-        from base_models.modeling_llama import LlamaConfig, LlamaForCausalLM
-        config = LlamaConfig()
-        config._flash_attn_2_enabled = True
-        model_flash = LlamaForCausalLM(config=config)
-        # print(model_flash)
-        # 1/0
-        model_flash.load_state_dict(model.state_dict())
-        model = model_flash
-        logger.info(f'Loaded flash attention model')
+        # Load model and tokenizer
+        model = model_cls.from_pretrained(
+            args.from_pretrained,
+            torch_dtype=torch.bfloat16,
+            quantization_config=bnb_config,
+            use_cache=False,
+            use_flash_attention_2=args.use_flash_attention,
+            # device_map="auto",
+        )
+        model.config.pretraining_tp = 1
+
+    # if args.use_flash_attention:
+    #     from base_models.modeling_llama import LlamaConfig, LlamaForCausalLM
+    #     config = LlamaConfig()
+    #     config._flash_attn_2_enabled = True
+    #     model_flash = LlamaForCausalLM(config=config)
+    #     # print(model_flash)
+    #     # 1/0
+    #     model_flash.load_state_dict(model.state_dict())
+    #     model = model_flash
+    #     logger.info(f'Loaded flash attention model')
 
     if args.use_lora:
         peft_config = LoraConfig(
@@ -464,8 +487,8 @@ if __name__ == '__main__':
             layers_pattern=args.layers_pattern
             )
         model = get_peft_model(model, peft_config)
-        if args.int8:
-            model = prepare_model_for_int8_training(model)
+        if args.int8 or args.int4:
+            model = prepare_model_for_kbit_training(model)
             logger.info(f'Prepared for int8')
 
         logger.info(f'Added LoRA, trainable parameters with LoRA only:')
