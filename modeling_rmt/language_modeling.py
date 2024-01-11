@@ -92,9 +92,6 @@ class RecurrentWrapper(torch.nn.Module):
     def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
         memory_state = None
         segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
-        # print('\n\n\n\n\n\nsegmented', len(segmented))
-        # print('input_ids', input_ids.shape)
-        # print('segmented', segmented[0].shape)
 
         cell_outputs = []
         for seg_num, segment in enumerate(segmented):
@@ -168,17 +165,7 @@ class RecurrentWrapper(torch.nn.Module):
 
                 flat_labels = flat_labels[shift_mask.view(-1)]
                 flat_logits = flat_logits[shift_mask.view(-1)]
-                
-            # print('\n\n\n\nshift_labels: ', shift_labels)
-            # print('shift_logits: ', shift_logits)
-            # print('shift_mask: ', shift_mask)
-            # print([l[m].shape for l, m in zip(shift_labels, shift_mask)])
-            # if any([sum(m) == 0 for m in shift_mask]):
-                # print('\n\n\n\nshift_labels: ', shift_labels)
-                # print('shift_logits: ', shift_logits)
-                # print('shift_mask: ', shift_mask)
-                # raise ValueError
-            # # 1/0
+     
             out['loss'] = loss_fct(flat_logits, flat_labels)
             if out['loss'] is None:
                 raise ValueError

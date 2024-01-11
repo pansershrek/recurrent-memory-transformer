@@ -85,8 +85,7 @@ class SentenceSampler:
     def get_sample(self, sample_size):
         total_tokens = sum_lengths(self.sentences)
         while total_tokens < sample_size: # add a new dataset item
-            text = self.dataset[self.sample_ind]['text']
-            self.sample_ind += 1
+            text = self.next_sample_()
             sentences = self.sentence_tokenizer.tokenize(text)
             tokenized = [self.tokenizer.encode(s, add_special_tokens=False) for s in sentences]
             self.sentences += tokenized
@@ -102,6 +101,12 @@ class SentenceSampler:
             self.sentences = self.sentences[1:]
         
         return sample
+
+    def next_sample_(self):
+        sample = self.dataset[self.sample_ind]['text']
+        self.sample_ind += 1
+        self.sample_ind = self.sample_ind % len(self.dataset) 
+        return sample        
     
 
 # combined dataset for noisy babi QA
@@ -145,4 +150,4 @@ class NoiseInjectionDataset(Dataset):
         return sample
     
     def __len__(self):
-        return self.task_dataset
+        return len(self.task_dataset)
