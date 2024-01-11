@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CUDA_VISIBLE_DEVICES=1,2 NP=2 ./test_bert_sparse_pretrain_train_valid.sh
+# CUDA_VISIBLE_DEVICES=1,2 NP=2 ./finetune_babilong_baseline.sh
 set -e
 cd ../..
 
@@ -11,8 +11,7 @@ MEMORY_CELL=modeling_rmt.language_modeling:MemoryCell
 RECURRENT_WRAPPER=modeling_rmt.language_modeling:RecurrentWrapper
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_DATASET=qa1_single-supporting-fact
-NOISE_DATASET=wikitext
-NOISE_DATASET_SPLIT=wikitext-2-raw-v1
+NOISE_DATASET=pg19
 METRIC=exact_match
 
 MODEL_NAME=gpt2  # backbone model
@@ -40,10 +39,9 @@ echo RUNNING: TASK_DATASET MEMORY_SIZE SEGMENT_SIZE SAMPLE_SIZE MODEL_NAME MODEL
 echo gradient accumulation steps $GRAD_ACC_STEPS
 # python run_finetuning_babilong_rmt.py \
 
-accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29001 run_finetuning_babilong_rmt.py \
+accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29002 run_finetuning_babilong_rmt.py \
         --task_dataset $TASK_DATASET \
         --noise_dataset $NOISE_DATASET \
-        --noise_dataset_split $NOISE_DATASET_SPLIT \
         --babi_path /home/bulatov/datasets/babi/tasks_1-20_v1-2/en-10k \
         --model_path /home/bulatov/runs/test/babilong/${TASK_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_lora/run_$N \
         --from_pretrained $MODEL_NAME \

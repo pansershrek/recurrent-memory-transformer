@@ -52,7 +52,7 @@ from lm_experiments_tools.utils import get_cls_by_name, get_optimizer, prepare_r
 parser = HfArgumentParser(TrainerArgs)
 parser.add_argument('--task_dataset', type=str, help="Task name", default="qa1_single-supporting-fact")
 parser.add_argument('--noise_dataset', type=str, help="Task name", default='wikitext')
-parser.add_argument('--noise_dataset_split', type=str, help="Task name", default='wikitext-2-raw-v1')
+parser.add_argument('--noise_dataset_split', type=str, help="Task name", default=None)
 parser.add_argument('--babi_path', type=str, help="path to babi folder", default="data/tasks_1-20_v1-2/en-10k")
 
 
