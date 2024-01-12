@@ -142,3 +142,6 @@ dmypy.json
 .vscode/
 runs/
 data/*.tsv
+
+#unpacked datasets:
+data/tasks_1-20_v1-2/
