@@ -16,13 +16,13 @@ METRIC=exact_match
 
 MODEL_NAME=gpt2  # backbone model
 SEGMENT_SIZE=512 # size of one segment in tokens
-SAMPLE_SIZE=512 # length of task sample in tokens
-MEMORY_SIZE=0
-MAX_N_SEGMENTS=1
+SAMPLE_SIZE=1024 # length of task sample in tokens
+MEMORY_SIZE=10
+MAX_N_SEGMENTS=2
 
-ITERS=2000
+ITERS=5000
 TBS=64
-BS=16
+BS=8
 
 GRAD_ACC_STEPS=$(($TBS/($BS*$NP)))
 SCHEDULER=linear
@@ -39,7 +39,7 @@ echo RUNNING: TASK_DATASET $TASK_DATASET MEMORY_SIZE $MEMORY_SIZE SEGMENT_SIZE $
 echo SAMPLE_SIZE $SAMPLE_SIZE MODEL_NAME $MODEL_NAME LR $LR N $N
 echo gradient accumulation steps $GRAD_ACC_STEPS
 
-accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29002 run_finetuning_babilong_rmt.py \
+accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29003 run_finetuning_babilong_rmt.py \
         --task_dataset $TASK_DATASET \
         --noise_dataset $NOISE_DATASET \
         --babi_path /home/bulatov/datasets/babi/tasks_1-20_v1-2/en-10k \
@@ -55,8 +55,8 @@ accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29002 run_fine
         --max_n_segments $MAX_N_SEGMENTS\
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --num_training_steps $((ITERS*2)) \
-        --save_best \
         --iters $ITERS \
+        --save_best \
         --k2 $K2 \
         --optimizer AdamW  --weight_decay 0.01 \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
