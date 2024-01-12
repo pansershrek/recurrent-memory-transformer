@@ -20,9 +20,9 @@ SAMPLE_SIZE=512 # length of task sample in tokens
 MEMORY_SIZE=0
 MAX_N_SEGMENTS=1
 
-ITERS=10000
+ITERS=2000
 TBS=64
-BS=1
+BS=16
 
 GRAD_ACC_STEPS=$(($TBS/($BS*$NP)))
 SCHEDULER=linear
@@ -35,15 +35,15 @@ K2=-1   # BPTT unroll length
 
 ACCEL_CONFIG=./accel_configs/accelerate.yaml
 
-echo RUNNING: TASK_DATASET MEMORY_SIZE SEGMENT_SIZE SAMPLE_SIZE MODEL_NAME MODEL_CLS LR N
+echo RUNNING: TASK_DATASET $TASK_DATASET MEMORY_SIZE $MEMORY_SIZE SEGMENT_SIZE $SEGMENT_SIZE 
+echo SAMPLE_SIZE $SAMPLE_SIZE MODEL_NAME $MODEL_NAME LR $LR N $N
 echo gradient accumulation steps $GRAD_ACC_STEPS
-# python run_finetuning_babilong_rmt.py \
 
 accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29002 run_finetuning_babilong_rmt.py \
         --task_dataset $TASK_DATASET \
         --noise_dataset $NOISE_DATASET \
         --babi_path /home/bulatov/datasets/babi/tasks_1-20_v1-2/en-10k \
-        --model_path /home/bulatov/runs/test/babilong/${TASK_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_lora/run_$N \
+        --model_path /home/bulatov/runs/babilong/${TASK_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
@@ -55,6 +55,7 @@ accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29002 run_fine
         --max_n_segments $MAX_N_SEGMENTS\
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --num_training_steps $((ITERS*2)) \
+        --save_best \
         --iters $ITERS \
         --k2 $K2 \
         --optimizer AdamW  --weight_decay 0.01 \
