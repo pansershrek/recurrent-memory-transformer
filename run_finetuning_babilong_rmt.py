@@ -384,7 +384,12 @@ if __name__ == '__main__':
         metrics = {}
         if 'predictions' in data:
             y, p = data['labels'], data['predictions']
-            predicted_labels = tokenizer.batch_decode(data['predicted_labels'])
+            predicted_labels = tokenizer.batch_decode(data['predicted_labels'], add_special_tokens=False)
+            for i, l in enumerate(predicted_labels):
+                if '<|endoftext|>' in l:
+                    eos_ind = predicted_labels[i].index('<|endoftext|>')
+                    predicted_labels[i] = predicted_labels[i][:eos_ind]
+                    
             metrics['exact_match'] = np.mean([text == pred for text, pred in zip (data['target_text'], predicted_labels)])
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
