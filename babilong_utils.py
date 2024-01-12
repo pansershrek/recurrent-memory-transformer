@@ -111,11 +111,13 @@ class SentenceSampler:
 
 # combined dataset for noisy babi QA
 class NoiseInjectionDataset(Dataset):
-    def __init__(self, task_dataset, noise_sampler, tokenizer, sample_size=100):
+    def __init__(self, task_dataset, noise_sampler, tokenizer, sample_size=100, random_seed=42):
         self.task_dataset = task_dataset
         self.noise_sampler = noise_sampler
         self.sample_size = sample_size
         self.tokenizer = tokenizer
+        if random_seed:
+            np.random.seed(random_seed)
 
     def __getitem__(self, ind):
         sample = self.task_dataset[ind]
