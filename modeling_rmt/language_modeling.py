@@ -94,6 +94,7 @@ class RecurrentWrapper(torch.nn.Module):
         segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
 
         cell_outputs = []
+        # print('\n\n\nForward: ', [s['input_ids'].shape for s in segmented])
         for seg_num, segment in enumerate(segmented):
             cell_out, memory_state = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
             cell_outputs.append(cell_out)
@@ -109,6 +110,7 @@ class RecurrentWrapper(torch.nn.Module):
         memory_state = None
         segmented = self.segment(input_ids=input_ids, attention_mask=attention_mask)
 
+        # print('\n\n\nGenerate: ', [s['input_ids'].shape for s in segmented])
         for seg_num, segment in enumerate(segmented[:-1]):
             cell_out, memory_state = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
 
