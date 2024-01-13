@@ -87,30 +87,12 @@ parser.add_argument('--segment_size', type=int, default=None, help='maximal inpu
 parser.add_argument('--sample_size', type=int, default=None, help='max number of tokens in sample')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
-# parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
-# parser.add_argument('--sampling_prob', type=float, default=1, help='Probability of sampling other number of segments')
-# parser.add_argument('--sum_loss', action='store_true', default=False,
-#                     help='with this flag task loss from all segments is summed')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
 parser.add_argument('--segment_alignment', type=str, help='way of aligning segments, one of right, left, center', default=None)
-# parser.add_argument('--segment_ordering', type=str, help='segment order', default='regular',
-#                     choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
-# parser.add_argument('--memory_forward_func', type=str, help='path to memory forward funсtion script', default=None)
-# parser.add_argument('--memory_layers', type=str, help='memory-augmented layer inds or "all" for all layers', default=None)
-# parser.add_argument('--share_memory_layers', action='store_true', help='share weights of memory layers', default=False)
-# parser.add_argument('--reconstruction_loss_coef', type=float, default=None,
-#                     help='reconstuction loss ratio in total loss')
-# parser.add_argument('--retain_graph', action='store_true', help='Retain computation graph during backward pass', default=False)
-# parser.add_argument('--use_truncated_backward', action='store_true', default=False,
-#                     help='whether to use RMT truncated bptt method in backward')
-# parser.add_argument('--k1', type=int, default=-1, help='(not implemented) If not -1, gradient update is done each k1 segments')
 parser.add_argument('--k2', type=int, default=-1, help='number of last segments used by backward')
 parser.add_argument('--freeze_model_weights', action='store_true', default=False,
                     help='Stop training all model weights except memory layers')
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
-
-# parser.add_argument('--base_model_forward', type=str, default=None, help='custom forward function for backbone model')
-
 
 # tokenizer
 # todo: add wordpiece tokenizers support?
