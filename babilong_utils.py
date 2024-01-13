@@ -5,7 +5,7 @@ import nltk
 from torch.utils.data import Dataset
 
 # preprocess babi text files
-def get_dataset_df(dataset_path):
+def get_dataset_df(dataset_path, max_n_facts=None):
     with open(dataset_path, 'r') as f:
         texts = f.read().strip()
         texts = texts.split('\n')
@@ -36,6 +36,8 @@ def get_dataset_df(dataset_path):
         slices = [sample.loc[:ans_pos].copy() for ans_pos in answer_positions]
         for i, slc in enumerate(slices):
             slices[i] = slc[(slc.answer.isna()) | (slc.index == slc.index[-1])]
+        if max_n_facts is not None:             # drop samples with too many facts
+            slices = [slc for slc in slices if slc.shape[0] <= max_n_facts]
         single_question_slices += slices
     
     df = pd.concat(single_question_slices).reset_index(drop=True)
@@ -52,8 +54,8 @@ def get_dataset_df(dataset_path):
 
 # babi task loader dataset
 class TaskDataset(Dataset):
-    def __init__(self, dataset_path):
-        self.fact_dataset = get_dataset_df(dataset_path)
+    def __init__(self, dataset_path, max_n_facts=None):
+        self.fact_dataset = get_dataset_df(dataset_path, max_n_facts=max_n_facts)
 
     def __getitem__(self, ind):
         slc = self.fact_dataset[self.fact_dataset.sample_num == ind]
@@ -75,11 +77,12 @@ def sum_lengths(sentences):
 
 # sampler of background text 
 class SentenceSampler:
-    def __init__(self, dataset, tokenizer):
+    def __init__(self, dataset, tokenizer, max_sentence_len=None):
         self.sample_ind = 0
         self.dataset = dataset
         self.sentences = []
         self.tokenizer = tokenizer
+        self.max_sentence_len = max_sentence_len
         self.sentence_tokenizer = nltk.PunktSentenceTokenizer()
 
     def get_sample(self, sample_size):
@@ -88,6 +91,8 @@ class SentenceSampler:
             text = self.next_sample_()
             sentences = self.sentence_tokenizer.tokenize(text)
             tokenized = [self.tokenizer.encode(s, add_special_tokens=False) for s in sentences]
+            if self.max_sentence_len is not None:
+                tokenized = [s for s in tokenized if len(s) <= self.max_sentence_len]   # drop sentences too long
             self.sentences += tokenized
             total_tokens += sum_lengths(tokenized)
 
@@ -110,12 +115,20 @@ class SentenceSampler:
     
 
 # combined dataset for noisy babi QA
+# it's recommended to use sample_size >= 1024 
+# and task_end_pct - task_start_pct >= 0.2 in order to 
 class NoiseInjectionDataset(Dataset):
-    def __init__(self, task_dataset, noise_sampler, tokenizer, sample_size=100, random_seed=42):
+    def __init__(self, task_dataset, noise_sampler, tokenizer, 
+                 task_start_pct=None,                   # left border of facts in sample, between 0 and 1
+                 task_end_pct=None,                     # right border of facts in sample, between task_start_pct and 1
+                 sample_size=1024, 
+                 random_seed=42):
         self.task_dataset = task_dataset
         self.noise_sampler = noise_sampler
         self.sample_size = sample_size
         self.tokenizer = tokenizer
+        self.task_start_pct = task_start_pct
+        self.task_end_pct = task_end_pct
         if random_seed:
             np.random.seed(random_seed)
 
@@ -124,16 +137,34 @@ class NoiseInjectionDataset(Dataset):
         facts_tok = self.tokenizer(list(sample['facts']))['input_ids']
         question_tok = self.tokenizer(sample['question'])['input_ids']
         answer_tok = self.tokenizer(sample['answer'])['input_ids']
-        
+
         task_len = sum_lengths(facts_tok) + len(question_tok) + len(answer_tok)
         background_text_len = self.sample_size - task_len
         background_text = self.noise_sampler.get_sample(background_text_len)
         sample['background_text'] = background_text
 
-        possible_positions = range(len(background_text) + 1) 
+        if self.task_start_pct is None and self.task_end_pct is None:     # if fact position unspecified
+            possible_positions = range(len(background_text) + 1) 
+        else:
+            task_start_ind = int(self.sample_size * self.task_start_pct)
+            task_end_ind = int(self.sample_size * self.task_end_pct)
+            total_facts_len = sum_lengths(facts_tok)
+
+            possible_positions = []                                       # where can we insert facts?
+            current_length = 0
+            for i, text in enumerate(background_text):
+                if (current_length >= task_start_ind) and (current_length < task_end_ind - total_facts_len):
+                    possible_positions.append(i)
+                current_length += len(text)
+
+            if len(possible_positions) == 0:
+                raise IndexError(f"Unable to insert facts in specified place: {self.task_start_pct, self.task_end_pct}. \
+                                 Total fact length: {total_facts_len}, sentences length: {[len(t) for t in background_text]}. Make the range wider or increase the sample size.")
+            
         fact_positions = np.random.choice(possible_positions, len(facts_tok))
         fact_positions.sort()
-        sample['fact_positions'] = fact_positions       # positions of facts between noise sentences
+        sample['fact_positions'] = fact_positions                  # positions of facts between noise sentences
+
         updated_sample = [[] for _ in range(len(background_text) + 1)] 
         for fact, pos in zip(facts_tok, fact_positions):
             updated_sample[pos].append(fact)

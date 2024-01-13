@@ -81,10 +81,15 @@ parser.add_argument('--model_type', type=str, default='encoder-decoder',
                     help='model type, encoder, encoder-decoder, decoder, affects preprocessing '
                          '(default: encoder-decoder)')
 
+# Babilong parameters
+parser.add_argument('--sample_size', type=int, default=None, help='max number of tokens in sample')
+parser.add_argument('--max_n_facts', type=int, default=None, help='drop samples with higher number of facts')
+parser.add_argument('--task_start_pct', type=float, default=None, help='left border of facts in sample, between 0 and 1')
+parser.add_argument('--task_end_pct', type=float, default=None, help='right border of facts in sample, between task_start_pct and 1')
+
 
 # RMT args 
 parser.add_argument('--segment_size', type=int, default=None, help='maximal input size of the backbone model')
-parser.add_argument('--sample_size', type=int, default=None, help='max number of tokens in sample')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
@@ -169,22 +174,33 @@ if __name__ == '__main__':
     train_path = os.path.join(args.babi_path, f"{args.task_dataset}_train.txt")
     test_path = os.path.join(args.babi_path, f"{args.task_dataset}_test.txt")
 
-    task_dataset_train = TaskDataset(train_path)
-    task_dataset_test = TaskDataset(test_path)
+    task_dataset_train = TaskDataset(train_path, max_n_facts=args.max_n_facts)
+    task_dataset_test = TaskDataset(test_path, max_n_facts=args.max_n_facts)
 
     # background text
-    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer)
-    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer)
+    max_sentence_len = None
+    if (args.task_start_pct is not None) and (args.task_end_pct is not None):
+        # do not sample sentences longer than task position range * 0.5
+        max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * args.sample_size)
+        
+    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len)
+    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len)
 
     train_dataset = NoiseInjectionDataset(task_dataset=task_dataset_train,
                                             noise_sampler=noise_sampler_train,
                                             tokenizer=tokenizer,
-                                            sample_size=args.sample_size)
+                                            sample_size=args.sample_size,
+                                            task_start_pct=args.task_start_pct,
+                                            task_end_pct=args.task_end_pct
+                                            )
 
     test_dataset = NoiseInjectionDataset(task_dataset=task_dataset_test,
                                             noise_sampler=noise_sampler_test,
                                             tokenizer=tokenizer,
-                                            sample_size=args.sample_size)
+                                            sample_size=args.sample_size,
+                                            task_start_pct=args.task_start_pct,
+                                            task_end_pct=args.task_end_pct
+                                            )
     
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     gen_token = tokenizer.encode('GEN')[0]
