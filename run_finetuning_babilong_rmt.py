@@ -183,8 +183,8 @@ if __name__ == '__main__':
         # do not sample sentences longer than task position range * 0.5
         max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * args.sample_size)
         
-    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len)
-    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len)
+    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
+    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
 
     train_dataset = NoiseInjectionDataset(task_dataset=task_dataset_train,
                                             noise_sampler=noise_sampler_train,
@@ -230,13 +230,18 @@ if __name__ == '__main__':
         collated['target_text'] = [b['answer'] for b in batch]
         return collated
 
-
     # train_dataset, valid_dataset, test_dataset = dataset["train"], dataset["validation"], dataset["test"]
-    kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
+    kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers, 'collate_fn': collate_fn}
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
-    train_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=train_dataset, collate_fn=collate_fn, shuffle=True)
-    test_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=test_dataset, collate_fn=collate_fn, shuffle=False)
-    
+    train_sampler = DistributedSampler(train_dataset, rank=accelerator.process_index,
+                                       num_replicas=accelerator.num_processes, shuffle=True, drop_last=True,
+                                       seed=args.seed)
+    test_sampler = DistributedSampler(test_dataset, rank=accelerator.process_index,
+                                      num_replicas=accelerator.num_processes, drop_last=False, shuffle=False)
+    train_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=train_dataset, sampler=train_sampler,
+                                  **kwargs)
+    test_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=test_dataset, sampler=test_sampler, **kwargs)
+
     if args.valid_interval is None:
         args.valid_interval = args.log_interval
 
@@ -374,7 +379,7 @@ if __name__ == '__main__':
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
     # scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
 
-    # model, optimizer = accelerator.prepare(model, optimizer)
+    model, optimizer = accelerator.prepare(model, optimizer)
     # model, optimizer, _ = accelerator.prepare(model, optimizer, train_dataloader)
 
     def metrics_fn(data):
@@ -391,8 +396,8 @@ if __name__ == '__main__':
             metrics['exact_match'] = np.mean([text == pred for text, pred in zip (data['target_text'], predicted_labels)])
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
-                    logger.info(f'y: {y[i][:100]}')
-                    logger.info(f'p: {p[i][:100]}')
+                    logger.info(f'y: {y[i][-50:]}')
+                    logger.info(f'p: {p[i][-50:]}')
 
                     logger.info(f"y_text: {data['target_text'][i]}")
                     logger.info(f"p_text: {predicted_labels[i]}")
@@ -412,7 +417,7 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs={})
+                      generate_kwargs={"pad_token_id": id_pad_value})
 
     if not args.validate_only:
         # train loop
@@ -432,12 +437,16 @@ if __name__ == '__main__':
             trainer.validate(test_dataloader, write_tb=True, split='test')
         trainer.save_metrics(save_path=args.model_path)
     else:
-        # run validation, do not write to tensorboard
+        # if args.save_best:
+        #     best_model_path = str(Path(args.model_path) / 'model_best')
+        #     logger.info(f'Loading best saved model from {best_model_path}')
+        #     trainer.load(best_model_path)
+        # # run validation, do not write to tensorboard
         # logger.info('Running validation on train set:')
-        # trainer.validate(train_dataloader, split='train', write_tb=True)
+        # trainer.validate(train_dataloader, split='train', write_tb=False)
         # if valid_dataloader is not None:
         #     logger.info('Running validation on valid data:')
         #     trainer.validate(valid_dataloader, write_tb=True, split='valid')
         if test_dataloader is not None:
             logger.info('Runnning validation on test data:')
-            trainer.validate(test_dataloader, write_tb=False, split='test')
+            trainer.validate(test_dataloader, write_tb=True, split='test')

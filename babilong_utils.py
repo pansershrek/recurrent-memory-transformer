@@ -77,41 +77,58 @@ def sum_lengths(sentences):
 
 # sampler of background text 
 class SentenceSampler:
-    def __init__(self, dataset, tokenizer, max_sentence_len=None):
+    def __init__(self, dataset, tokenizer, max_sentence_len=None, shuffle=False, random_seed=42):
         self.sample_ind = 0
         self.dataset = dataset
         self.sentences = []
         self.tokenizer = tokenizer
         self.max_sentence_len = max_sentence_len
         self.sentence_tokenizer = nltk.PunktSentenceTokenizer()
+        self.shuffle = shuffle
+        if random_seed:
+            self.gen = np.random.default_rng(seed=random_seed)
 
     def get_sample(self, sample_size):
-        total_tokens = sum_lengths(self.sentences)
-        while total_tokens < sample_size: # add a new dataset item
-            text = self.next_sample_()
-            sentences = self.sentence_tokenizer.tokenize(text)
-            tokenized = [self.tokenizer.encode(s, add_special_tokens=False) for s in sentences]
-            if self.max_sentence_len is not None:
-                tokenized = [s for s in tokenized if len(s) <= self.max_sentence_len]   # drop sentences too long
-            self.sentences += tokenized
-            total_tokens += sum_lengths(tokenized)
-
+        self.sample_sentences_()        
+        if self.shuffle:
+            start_sent = self.gen.choice(len(self.sentences))
+            self.sentences = self.sentences[start_sent:]
+        
         sample = []
-        sample_tokens = 0
-        for sent in self.sentences: # add new sentence until sample_size is reached
-            sample_tokens += len(sent)
-            if sample_tokens >= sample_size:
+        total_len = 0
+        Done = False
+        while not Done:
+            for sent in self.sentences: # add new sentence until sample_size is reached
+                tokenized = self.tokenizer.encode(sent, add_special_tokens=False)
+                if self.max_sentence_len is not None and len(tokenized) > self.max_sentence_len:
+                     continue
+                total_len += len(tokenized)
+                if total_len >= sample_size:
+                    Done = True
+                    break
+                sample.append(tokenized)
+                self.sentences = self.sentences[1:]
+            if Done:
                 break
-            sample.append(sent)
-            self.sentences = self.sentences[1:]
+            self.sample_sentences_()
         
         return sample
 
+    def sample_sentences_(self):
+        text = self.next_sample_()
+        sentences = self.sentence_tokenizer.tokenize(text)
+        self.sentences += sentences        
+
     def next_sample_(self):
-        sample = self.dataset[self.sample_ind]['text']
-        self.sample_ind += 1
-        self.sample_ind = self.sample_ind % len(self.dataset) 
-        return sample        
+        if self.shuffle:
+            self.total_tokens = 0
+            sample_ind = self.gen.choice(len(self.dataset))
+            return self.dataset[sample_ind]['text']
+        else:
+            sample = self.dataset[self.sample_ind]['text']
+            self.sample_ind += 1
+            self.sample_ind = self.sample_ind % len(self.dataset) 
+            return sample 
     
 
 # combined dataset for noisy babi QA
@@ -130,7 +147,7 @@ class NoiseInjectionDataset(Dataset):
         self.task_start_pct = task_start_pct
         self.task_end_pct = task_end_pct
         if random_seed:
-            np.random.seed(random_seed)
+            self.gen = np.random.default_rng(seed=random_seed)
 
     def __getitem__(self, ind):
         sample = self.task_dataset[ind]
@@ -161,7 +178,7 @@ class NoiseInjectionDataset(Dataset):
                 raise IndexError(f"Unable to insert facts in specified place: {self.task_start_pct, self.task_end_pct}. \
                                  Total fact length: {total_facts_len}, sentences length: {[len(t) for t in background_text]}. Make the range wider or increase the sample size.")
             
-        fact_positions = np.random.choice(possible_positions, len(facts_tok))
+        fact_positions = self.gen.choice(possible_positions, len(facts_tok))
         fact_positions.sort()
         sample['fact_positions'] = fact_positions                  # positions of facts between noise sentences
 
