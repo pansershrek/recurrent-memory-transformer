@@ -167,16 +167,17 @@ class NoiseInjectionDataset(Dataset):
         question_tok = self.tokenizer(sample['question'])['input_ids']
         answer_tok = self.tokenizer(sample['answer'])['input_ids']
 
+        sample_size = self.get_sample_size()
         task_len = sum_lengths(facts_tok)
-        background_text_len = self.sample_size - task_len
+        background_text_len = sample_size - task_len
         background_text = self.noise_sampler.get_sample(background_text_len)
         sample['background_text'] = background_text
 
         if self.task_start_pct is None and self.task_end_pct is None:     # if fact position unspecified
             possible_positions = range(len(background_text) + 1) 
         else:
-            task_start_ind = int(self.sample_size * self.task_start_pct)
-            task_end_ind = int(self.sample_size * self.task_end_pct)
+            task_start_ind = int(sample_size * self.task_start_pct)
+            task_end_ind = int(sample_size * self.task_end_pct)
             total_facts_len = sum_lengths(facts_tok)
 
             possible_positions = []                                       # where can we insert facts?
@@ -212,3 +213,9 @@ class NoiseInjectionDataset(Dataset):
     
     def __len__(self):
         return len(self.task_dataset)
+    
+    def get_sample_size(self):
+        if isinstance(self.sample_size, list):
+            return self.gen.choice(self.sample_size)
+        else:
+            return self.sample_size

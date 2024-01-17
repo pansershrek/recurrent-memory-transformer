@@ -92,6 +92,7 @@ parser.add_argument('--task_end_pct', type=float, default=None, help='right bord
 parser.add_argument('--segment_size', type=int, default=None, help='maximal input size of the backbone model')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
+parser.add_argument('--vary_n_segments',action='store_true', default=False, help='randomly sample input size for each batch')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
 parser.add_argument('--segment_alignment', type=str, help='way of aligning segments, one of right, left, center', default=None)
 parser.add_argument('--k2', type=int, default=-1, help='number of last segments used by backward')
@@ -179,7 +180,11 @@ if __name__ == '__main__':
 
     # background text
     qa_margin = 20          # leave space for questions and answers
-    sample_size = args.sample_size - qa_margin
+    if args.vary_n_segments: # choose sample sizes according to each number of segments up to args.max_n_segments
+        sample_size = [int(args.sample_size / i) for i in range(1, args.max_n_segments + 1)]
+        sample_size = [s - qa_margin for s in sample_size]
+    else:
+        sample_size = args.sample_size - qa_margin
     max_sentence_len = None
     if (args.task_start_pct is not None) and (args.task_end_pct is not None):
         # do not sample sentences longer than task position range * 0.5
