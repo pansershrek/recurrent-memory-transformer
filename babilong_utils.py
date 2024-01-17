@@ -77,20 +77,21 @@ def sum_lengths(sentences):
 
 # sampler of background text 
 class SentenceSampler:
-    def __init__(self, dataset, tokenizer, max_sentence_len=None, shuffle=False, random_seed=42):
+    def __init__(self, dataset, tokenizer, min_sentence_len=10, max_sentence_len=None, shuffle=False, random_seed=42):
         self.sample_ind = 0
         self.dataset = dataset
         self.sentences = []
         self.tokenizer = tokenizer
+        self.min_sentence_len = min_sentence_len
         self.max_sentence_len = max_sentence_len
         self.sentence_tokenizer = nltk.PunktSentenceTokenizer()
         self.shuffle = shuffle
         if random_seed:
             self.gen = np.random.default_rng(seed=random_seed)
 
-    def get_sample(self, sample_size):
-        self.sample_sentences_()        
+    def get_sample(self, sample_size):   
         if self.shuffle:
+            self.sample_sentences_()
             start_sent = self.gen.choice(len(self.sentences))
             self.sentences = self.sentences[start_sent:]
         
@@ -100,14 +101,17 @@ class SentenceSampler:
         while not Done:
             for sent in self.sentences: # add new sentence until sample_size is reached
                 tokenized = self.tokenizer.encode(sent, add_special_tokens=False)
-                if self.max_sentence_len is not None and len(tokenized) > self.max_sentence_len:
-                     continue
+                if not self.length_is_ok(tokenized):
+                    continue
                 total_len += len(tokenized)
-                if total_len >= sample_size:
-                    Done = True
-                    break
                 sample.append(tokenized)
                 self.sentences = self.sentences[1:]
+                if total_len >= sample_size:
+                    cutoff = total_len - sample_size
+                    if cutoff > 0:
+                        sample[-1] = sample[-1][:-cutoff] 
+                    Done = True
+                    break
             if Done:
                 break
             self.sample_sentences_()
@@ -128,7 +132,15 @@ class SentenceSampler:
             sample = self.dataset[self.sample_ind]['text']
             self.sample_ind += 1
             self.sample_ind = self.sample_ind % len(self.dataset) 
-            return sample 
+            return sample
+        
+    def length_is_ok(self, tokenized):
+        if self.max_sentence_len is not None and len(tokenized) > self.max_sentence_len:
+            return False
+        if self.min_sentence_len is not None and len(tokenized) < self.min_sentence_len:
+            return False
+        return True
+        
     
 
 # combined dataset for noisy babi QA
@@ -155,7 +167,7 @@ class NoiseInjectionDataset(Dataset):
         question_tok = self.tokenizer(sample['question'])['input_ids']
         answer_tok = self.tokenizer(sample['answer'])['input_ids']
 
-        task_len = sum_lengths(facts_tok) + len(question_tok) + len(answer_tok)
+        task_len = sum_lengths(facts_tok)
         background_text_len = self.sample_size - task_len
         background_text = self.noise_sampler.get_sample(background_text_len)
         sample['background_text'] = background_text
@@ -186,8 +198,6 @@ class NoiseInjectionDataset(Dataset):
         for fact, pos in zip(facts_tok, fact_positions):
             updated_sample[pos].append(fact)
 
-        updated_sample[-1].append(question_tok)
-
         for i, s in enumerate(background_text):
             updated_sample[i].append(s)
 
@@ -195,6 +205,7 @@ class NoiseInjectionDataset(Dataset):
         tokens = [i for s in flat for i in s]
 
         sample['input_tokens'] = tokens
+        sample['question_tokens'] = question_tok
         sample['target_tokens'] = answer_tok
 
         return sample

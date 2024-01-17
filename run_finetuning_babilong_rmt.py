@@ -178,10 +178,12 @@ if __name__ == '__main__':
     task_dataset_test = TaskDataset(test_path, max_n_facts=args.max_n_facts)
 
     # background text
+    qa_margin = 20          # leave space for questions and answers
+    sample_size = args.sample_size - qa_margin
     max_sentence_len = None
     if (args.task_start_pct is not None) and (args.task_end_pct is not None):
         # do not sample sentences longer than task position range * 0.5
-        max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * args.sample_size)
+        max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * sample_size)
         
     noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
     noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
@@ -189,7 +191,7 @@ if __name__ == '__main__':
     train_dataset = NoiseInjectionDataset(task_dataset=task_dataset_train,
                                             noise_sampler=noise_sampler_train,
                                             tokenizer=tokenizer,
-                                            sample_size=args.sample_size,
+                                            sample_size=sample_size,
                                             task_start_pct=args.task_start_pct,
                                             task_end_pct=args.task_end_pct
                                             )
@@ -197,7 +199,7 @@ if __name__ == '__main__':
     test_dataset = NoiseInjectionDataset(task_dataset=task_dataset_test,
                                             noise_sampler=noise_sampler_test,
                                             tokenizer=tokenizer,
-                                            sample_size=args.sample_size,
+                                            sample_size=sample_size,
                                             task_start_pct=args.task_start_pct,
                                             task_end_pct=args.task_end_pct
                                             )
@@ -208,8 +210,8 @@ if __name__ == '__main__':
 
     def collate_fn(batch):
         targets = [torch.tensor(b['target_tokens']) for b in batch]
-        input_ids = [torch.tensor(b['input_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]) for b in batch]
-        gen_inputs = [torch.tensor(b['input_tokens'] + [gen_token]) for b in batch]
+        input_ids = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]) for b in batch]
+        gen_inputs = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token]) for b in batch]
 
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         labels_mask = [torch.zeros_like(b, dtype=bool) for b in input_ids]
