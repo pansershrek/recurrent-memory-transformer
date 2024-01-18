@@ -92,7 +92,9 @@ parser.add_argument('--task_end_pct', type=float, default=None, help='right bord
 parser.add_argument('--segment_size', type=int, default=None, help='maximal input size of the backbone model')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
-parser.add_argument('--vary_n_segments',action='store_true', default=False, help='randomly sample input size for each batch')
+parser.add_argument('--vary_n_segments', action='store_true', default=False, help='randomly sample input size for each batch')
+parser.add_argument('--mixed_length_ratio', type=float, default=0.0, help='used for mixed length curriculum. '
+                    'r > 0.0 means that we will start to sample batches with lengths <= max_n_segments')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
 parser.add_argument('--segment_alignment', type=str, help='way of aligning segments, one of right, left, center', default=None)
 parser.add_argument('--k2', type=int, default=-1, help='number of last segments used by backward')
@@ -180,17 +182,18 @@ if __name__ == '__main__':
 
     # background text
     qa_margin = 20          # leave space for questions and answers
-    if args.vary_n_segments: # choose sample sizes according to each number of segments up to args.max_n_segments
-        sample_size = [int(args.sample_size / i) for i in range(1, args.max_n_segments + 1)]
-        sample_size = [s - qa_margin for s in sample_size]
-        logger.info(f'Will be choosing sample size randomly from {sample_size}')
+    if args.vary_n_segments:  # choose sample sizes according to each number of segments up to args.max_n_segments
+        train_sample_size = [int(args.sample_size / i) for i in range(1, args.max_n_segments + 1)]
+        train_sample_size = [s - qa_margin for s in train_sample_size]
+        logger.info(f'Will be choosing sample size randomly from {train_sample_size} for training')
     else:
         sample_size = args.sample_size - qa_margin
-
+        train_sample_size = args.sample_size - qa_margin
+    test_sample_size = args.sample_size - qa_margin
     max_sentence_len = None
     if (args.task_start_pct is not None) and (args.task_end_pct is not None):
         # do not sample sentences longer than task position range * 0.5
-        max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * sample_size)
+        max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * args.sample_size)
         
     noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
     noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
@@ -198,7 +201,7 @@ if __name__ == '__main__':
     train_dataset = NoiseInjectionDataset(task_dataset=task_dataset_train,
                                             noise_sampler=noise_sampler_train,
                                             tokenizer=tokenizer,
-                                            sample_size=sample_size,
+                                            sample_size=train_sample_size,
                                             task_start_pct=args.task_start_pct,
                                             task_end_pct=args.task_end_pct
                                             )
@@ -206,7 +209,7 @@ if __name__ == '__main__':
     test_dataset = NoiseInjectionDataset(task_dataset=task_dataset_test,
                                             noise_sampler=noise_sampler_test,
                                             tokenizer=tokenizer,
-                                            sample_size=sample_size,
+                                            sample_size=test_sample_size,
                                             task_start_pct=args.task_start_pct,
                                             task_end_pct=args.task_end_pct
                                             )
@@ -426,7 +429,7 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs={"pad_token_id": id_pad_value})
+                      generate_kwargs={"pad_token_id": id_pad_value, "max_length":1010})
 
     if not args.validate_only:
         # train loop

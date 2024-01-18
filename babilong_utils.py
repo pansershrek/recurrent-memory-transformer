@@ -145,11 +145,13 @@ class NoiseInjectionDataset(Dataset):
     def __init__(self, task_dataset, noise_sampler, tokenizer, 
                  task_start_pct=None,                   # left border of facts in sample, between 0 and 1
                  task_end_pct=None,                     # right border of facts in sample, between task_start_pct and 1
-                 sample_size=1024, 
+                 sample_size=1024,
+                 mixed_length_ratio=0.0,                # used for mixed length curriculum, prob for shorter samples
                  random_seed=42):
         self.task_dataset = task_dataset
         self.noise_sampler = noise_sampler
         self.sample_size = sample_size
+        self.mixed_length_ratio = mixed_length_ratio
         self.tokenizer = tokenizer
         self.task_start_pct = task_start_pct
         self.task_end_pct = task_end_pct
@@ -211,6 +213,8 @@ class NoiseInjectionDataset(Dataset):
     
     def get_sample_size(self):
         if isinstance(self.sample_size, list):
-            return self.gen.choice(self.sample_size)
+            if self.gen.random() > self.mixed_length_ratio:
+                return self.gen.choice(self.sample_size)
+            return max(self.sample_size)
         else:
             return self.sample_size
