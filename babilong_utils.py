@@ -89,16 +89,10 @@ class SentenceSampler:
         if random_seed:
             self.gen = np.random.default_rng(seed=random_seed)
 
-    def get_sample(self, sample_size):   
-        if self.shuffle:
-            self.sample_sentences_(sample_size)
-            start_sent = self.gen.choice(len(self.sentences))
-            self.sentences = self.sentences[start_sent:]
-        
+    def get_sample(self, sample_size):        
         sample = []
         total_len = 0
-        Done = False
-        while not Done:
+        while True:
             for sent in self.sentences: # add new sentence until sample_size is reached
                 tokenized = self.tokenizer.encode(sent, add_special_tokens=False)
                 if not self.length_is_ok(tokenized):
@@ -110,19 +104,20 @@ class SentenceSampler:
                     cutoff = total_len - sample_size
                     if cutoff > 0:
                         sample[-1] = sample[-1][:-cutoff] 
-                    Done = True
-                    break
-            if Done:
-                break
+                    return sample
             self.sample_sentences_(sample_size)
         
-        return sample
-
     def sample_sentences_(self, sample_size):
-        text = self.next_sample_()
-        text = text[:sample_size * 10]          # cut too long texts to speed up tokenization
-        sentences = self.sentence_tokenizer.tokenize(text)
-        self.sentences += sentences[:-1]
+        sentences = []
+        while len(sentences) == 0:
+            text = self.next_sample_()
+            if self.shuffle:
+                text = text[self.gen.choice(len(text)):] # start from random position in text
+                text = text[:sample_size * 10]          # cut too long texts to speed up tokenization
+            sentences += self.sentence_tokenizer.tokenize(text)
+            if self.shuffle:
+                sentences = sentences[1:-1]
+        self.sentences += sentences
 
     def next_sample_(self):
         if self.shuffle:
@@ -141,7 +136,7 @@ class SentenceSampler:
         if self.min_sentence_len is not None and len(tokenized) < self.min_sentence_len:
             return False
         return True
-        
+ 
 
 # combined dataset for noisy babi QA
 # it's recommended to use sample_size >= 1024 
