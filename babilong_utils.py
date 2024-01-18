@@ -123,9 +123,9 @@ class SentenceSampler:
         if self.shuffle:
             self.total_tokens = 0
             sample_ind = self.gen.choice(len(self.dataset))
-            sample = self.dataset[sample_ind]['text']
+            sample = self.dataset[int(sample_ind)]['text']
         else:
-            sample = self.dataset[self.sample_ind]['text']
+            sample = self.dataset[int(self.sample_ind)]['text']
             self.sample_ind += 1
             self.sample_ind = self.sample_ind % len(self.dataset) 
         return sample
