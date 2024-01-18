@@ -729,7 +729,7 @@ class Trainer:
 
     @rank_0
     def save_metrics(self, save_path) -> None:
-        """Saves all metrics into metrics.json
+        """Saves all metrics into metrics.json, if file exists adds new values to it
         After trainer.train(...) you might want to load the best checkpoint and validate it on some test sets, e.g.:
             trainer.validate(valid, split='valid')
             trainer.validate(test_1, split='test_1')
@@ -738,14 +738,19 @@ class Trainer:
             trainer.save_metrics(save_path=args.model_path)
         """
         if save_path is not None:
-            save_path = f'{save_path}/metrics.json'
+            save_path = Path(save_path)
+            save_path = save_path / 'metrics.json'
             for split in self.metrics:
                 for k in self.metrics[split]:
                     if isinstance(self.metrics[split][k], torch.Tensor):
                         self.metrics[split][k] = self.metrics[split][k].numpy().tolist()
                     if isinstance(self.metrics[split][k], np.ndarray):
                         self.metrics[split][k] = self.metrics[split][k].tolist()
+            metrics = {}
+            if save_path.exists():
+                metrics = json.load(save_path.open('r'))
+            metrics.update(self.metrics)
             try:
-                json.dump(self.metrics, open(save_path, 'w'), indent=4)
+                json.dump(metrics, open(save_path, 'w'), indent=4)
             except TypeError as e:
-                logger.warning(f'Unable to save metrics: {e}.\nmetrics: {self.metrics}')
+                logger.warning(f'Unable to save metrics: {e}.\nmetrics: {metrics}')
