@@ -213,8 +213,8 @@ class NoiseInjectionDataset(Dataset):
     
     def get_sample_size(self):
         if isinstance(self.sample_size, list):
-            if self.rng.random() > self.mixed_length_ratio:
+            if self.gen.random() > self.mixed_length_ratio:
                 return self.gen.choice(self.sample_size)
-            return self.sample_size[-1]
+            return max(self.sample_size)
         else:
             return self.sample_size
