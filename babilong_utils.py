@@ -91,7 +91,7 @@ class SentenceSampler:
 
     def get_sample(self, sample_size):   
         if self.shuffle:
-            self.sample_sentences_()
+            self.sample_sentences_(sample_size)
             start_sent = self.gen.choice(len(self.sentences))
             self.sentences = self.sentences[start_sent:]
         
@@ -114,25 +114,26 @@ class SentenceSampler:
                     break
             if Done:
                 break
-            self.sample_sentences_()
+            self.sample_sentences_(sample_size)
         
         return sample
 
-    def sample_sentences_(self):
+    def sample_sentences_(self, sample_size):
         text = self.next_sample_()
+        text = text[:sample_size * 10]          # cut too long texts to speed up tokenization
         sentences = self.sentence_tokenizer.tokenize(text)
-        self.sentences += sentences        
+        self.sentences += sentences[:-1]
 
     def next_sample_(self):
         if self.shuffle:
             self.total_tokens = 0
             sample_ind = self.gen.choice(len(self.dataset))
-            return self.dataset[sample_ind]['text']
+            sample = self.dataset[sample_ind]['text']
         else:
             sample = self.dataset[self.sample_ind]['text']
             self.sample_ind += 1
             self.sample_ind = self.sample_ind % len(self.dataset) 
-            return sample
+        return sample
         
     def length_is_ok(self, tokenized):
         if self.max_sentence_len is not None and len(tokenized) > self.max_sentence_len:
@@ -141,7 +142,6 @@ class SentenceSampler:
             return False
         return True
         
-    
 
 # combined dataset for noisy babi QA
 # it's recommended to use sample_size >= 1024 
