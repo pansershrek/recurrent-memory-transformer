@@ -211,8 +211,10 @@ if __name__ == '__main__':
     if args.vary_n_segments: # choose sample sizes according to each number of segments up to args.max_n_segments
         sample_size = [int(args.sample_size / i) for i in range(1, args.max_n_segments + 1)]
         sample_size = [s - qa_margin for s in sample_size]
+        logger.info(f'Will be choosing sample size randomly from {sample_size}')
     else:
         sample_size = args.sample_size - qa_margin
+
     max_sentence_len = None
     if (args.task_start_pct is not None) and (args.task_end_pct is not None):
         # do not sample sentences longer than task position range * 0.5
