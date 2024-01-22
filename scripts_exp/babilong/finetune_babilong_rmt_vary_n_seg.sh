@@ -43,7 +43,7 @@ accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29003 run_fine
         --task_dataset $TASK_DATASET \
         --noise_dataset $NOISE_DATASET \
         --babi_path /home/bulatov/datasets/babi/tasks_1-20_v1-2/en-10k \
-        --model_path /home/bulatov/runs/babilong/${TASK_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_bptt-${K2}/run_$N \
+        --model_path /home/bulatov/runs/babilong/${TASK_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_bptt-${K2}_vary/run_$N \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
@@ -53,6 +53,7 @@ accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29003 run_fine
         --sample_size $SAMPLE_SIZE \
         --num_mem_tokens $MEMORY_SIZE \
         --max_n_segments $MAX_N_SEGMENTS\
+        --vary_n_segments \
         --batch_size $BS --gradient_accumulation_steps $(($TBS/($BS*$NP))) \
         --num_training_steps $((ITERS*2)) \
         --iters $ITERS \

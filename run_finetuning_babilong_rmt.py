@@ -81,36 +81,26 @@ parser.add_argument('--model_type', type=str, default='encoder-decoder',
                     help='model type, encoder, encoder-decoder, decoder, affects preprocessing '
                          '(default: encoder-decoder)')
 
+# Babilong parameters
+parser.add_argument('--sample_size', type=int, default=None, help='max number of tokens in sample')
+parser.add_argument('--max_n_facts', type=int, default=None, help='drop samples with higher number of facts')
+parser.add_argument('--task_start_pct', type=float, default=None, help='left border of facts in sample, between 0 and 1')
+parser.add_argument('--task_end_pct', type=float, default=None, help='right border of facts in sample, between task_start_pct and 1')
+
 
 # RMT args 
 parser.add_argument('--segment_size', type=int, default=None, help='maximal input size of the backbone model')
-parser.add_argument('--sample_size', type=int, default=None, help='max number of tokens in sample')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
-# parser.add_argument('--vary_n_segments', action='store_true', default=False, help='Randomly choose segment number from 1 to max_n_segments')
-# parser.add_argument('--sampling_prob', type=float, default=1, help='Probability of sampling other number of segments')
-# parser.add_argument('--sum_loss', action='store_true', default=False,
-#                     help='with this flag task loss from all segments is summed')
+parser.add_argument('--vary_n_segments', action='store_true', default=False, help='randomly sample input size for each batch')
+parser.add_argument('--mixed_length_ratio', type=float, default=0.0, help='used for mixed length curriculum. '
+                    'r > 0.0 means that we will start to sample batches with lengths <= max_n_segments')
 parser.add_argument('--bptt_depth', type=int, default=-1, help='max number of previous segments in gradient computation.')
 parser.add_argument('--segment_alignment', type=str, help='way of aligning segments, one of right, left, center', default=None)
-# parser.add_argument('--segment_ordering', type=str, help='segment order', default='regular',
-#                     choices=['regular', 'reversed', 'bidirectional', 'repeat_first', 'last_memory_only'])
-# parser.add_argument('--memory_forward_func', type=str, help='path to memory forward funсtion script', default=None)
-# parser.add_argument('--memory_layers', type=str, help='memory-augmented layer inds or "all" for all layers', default=None)
-# parser.add_argument('--share_memory_layers', action='store_true', help='share weights of memory layers', default=False)
-# parser.add_argument('--reconstruction_loss_coef', type=float, default=None,
-#                     help='reconstuction loss ratio in total loss')
-# parser.add_argument('--retain_graph', action='store_true', help='Retain computation graph during backward pass', default=False)
-# parser.add_argument('--use_truncated_backward', action='store_true', default=False,
-#                     help='whether to use RMT truncated bptt method in backward')
-# parser.add_argument('--k1', type=int, default=-1, help='(not implemented) If not -1, gradient update is done each k1 segments')
 parser.add_argument('--k2', type=int, default=-1, help='number of last segments used by backward')
 parser.add_argument('--freeze_model_weights', action='store_true', default=False,
                     help='Stop training all model weights except memory layers')
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
-
-# parser.add_argument('--base_model_forward', type=str, default=None, help='custom forward function for backbone model')
-
 
 # tokenizer
 # todo: add wordpiece tokenizers support?
@@ -187,22 +177,42 @@ if __name__ == '__main__':
     train_path = os.path.join(args.babi_path, f"{args.task_dataset}_train.txt")
     test_path = os.path.join(args.babi_path, f"{args.task_dataset}_test.txt")
 
-    task_dataset_train = TaskDataset(train_path)
-    task_dataset_test = TaskDataset(test_path)
+    task_dataset_train = TaskDataset(train_path, max_n_facts=args.max_n_facts)
+    task_dataset_test = TaskDataset(test_path, max_n_facts=args.max_n_facts)
 
     # background text
-    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer)
-    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer)
+    qa_margin = 20          # leave space for questions and answers
+    if args.vary_n_segments:  # choose sample sizes according to each number of segments up to args.max_n_segments
+        train_sample_size = [int(args.sample_size / i) for i in range(1, args.max_n_segments + 1)]
+        train_sample_size = [s - qa_margin for s in train_sample_size]
+        logger.info(f'Will be choosing sample size randomly from {train_sample_size} for training')
+    else:
+        sample_size = args.sample_size - qa_margin
+        train_sample_size = args.sample_size - qa_margin
+    test_sample_size = args.sample_size - qa_margin
+    max_sentence_len = None
+    if (args.task_start_pct is not None) and (args.task_end_pct is not None):
+        # do not sample sentences longer than task position range * 0.5
+        max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * args.sample_size)
+        
+    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
+    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
 
     train_dataset = NoiseInjectionDataset(task_dataset=task_dataset_train,
                                             noise_sampler=noise_sampler_train,
                                             tokenizer=tokenizer,
-                                            sample_size=args.sample_size)
+                                            sample_size=train_sample_size,
+                                            task_start_pct=args.task_start_pct,
+                                            task_end_pct=args.task_end_pct
+                                            )
 
     test_dataset = NoiseInjectionDataset(task_dataset=task_dataset_test,
                                             noise_sampler=noise_sampler_test,
                                             tokenizer=tokenizer,
-                                            sample_size=args.sample_size)
+                                            sample_size=test_sample_size,
+                                            task_start_pct=args.task_start_pct,
+                                            task_end_pct=args.task_end_pct
+                                            )
     
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     gen_token = tokenizer.encode('GEN')[0]
@@ -210,8 +220,8 @@ if __name__ == '__main__':
 
     def collate_fn(batch):
         targets = [torch.tensor(b['target_tokens']) for b in batch]
-        input_ids = [torch.tensor(b['input_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]) for b in batch]
-        gen_inputs = [torch.tensor(b['input_tokens'] + [gen_token]) for b in batch]
+        input_ids = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]) for b in batch]
+        gen_inputs = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token]) for b in batch]
 
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         labels_mask = [torch.zeros_like(b, dtype=bool) for b in input_ids]
@@ -232,13 +242,18 @@ if __name__ == '__main__':
         collated['target_text'] = [b['answer'] for b in batch]
         return collated
 
-
     # train_dataset, valid_dataset, test_dataset = dataset["train"], dataset["validation"], dataset["test"]
-    kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
+    kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers, 'collate_fn': collate_fn}
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
-    train_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=train_dataset, collate_fn=collate_fn, shuffle=True)
-    test_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=test_dataset, collate_fn=collate_fn, shuffle=False)
-    
+    train_sampler = DistributedSampler(train_dataset, rank=accelerator.process_index,
+                                       num_replicas=accelerator.num_processes, shuffle=True, drop_last=True,
+                                       seed=args.seed)
+    test_sampler = DistributedSampler(test_dataset, rank=accelerator.process_index,
+                                      num_replicas=accelerator.num_processes, drop_last=False, shuffle=False)
+    train_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=train_dataset, sampler=train_sampler,
+                                  **kwargs)
+    test_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=test_dataset, sampler=test_sampler, **kwargs)
+
     if args.valid_interval is None:
         args.valid_interval = args.log_interval
 
@@ -376,7 +391,7 @@ if __name__ == '__main__':
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
     # scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
 
-    # model, optimizer = accelerator.prepare(model, optimizer)
+    model, optimizer = accelerator.prepare(model, optimizer)
     # model, optimizer, _ = accelerator.prepare(model, optimizer, train_dataloader)
 
     def metrics_fn(data):
@@ -393,8 +408,8 @@ if __name__ == '__main__':
             metrics['exact_match'] = np.mean([text == pred for text, pred in zip (data['target_text'], predicted_labels)])
             if args.show_valid_examples > 0:
                 for i in range(min(args.show_valid_examples, len(y))):
-                    logger.info(f'y: {y[i][:100]}')
-                    logger.info(f'p: {p[i][:100]}')
+                    logger.info(f'y: {y[i][-50:]}')
+                    logger.info(f'p: {p[i][-50:]}')
 
                     logger.info(f"y_text: {data['target_text'][i]}")
                     logger.info(f"p_text: {predicted_labels[i]}")
@@ -414,7 +429,7 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs={})
+                      generate_kwargs={"pad_token_id": id_pad_value, "max_length":1010})
 
     if not args.validate_only:
         # train loop
@@ -434,12 +449,16 @@ if __name__ == '__main__':
             trainer.validate(test_dataloader, write_tb=True, split='test')
         trainer.save_metrics(save_path=args.model_path)
     else:
-        # run validation, do not write to tensorboard
+        # if args.save_best:
+        #     best_model_path = str(Path(args.model_path) / 'model_best')
+        #     logger.info(f'Loading best saved model from {best_model_path}')
+        #     trainer.load(best_model_path)
+        # # run validation, do not write to tensorboard
         # logger.info('Running validation on train set:')
-        # trainer.validate(train_dataloader, split='train', write_tb=True)
+        # trainer.validate(train_dataloader, split='train', write_tb=False)
         # if valid_dataloader is not None:
         #     logger.info('Running validation on valid data:')
         #     trainer.validate(valid_dataloader, write_tb=True, split='valid')
         if test_dataloader is not None:
             logger.info('Runnning validation on test data:')
-            trainer.validate(test_dataloader, write_tb=False, split='test')
+            trainer.validate(test_dataloader, write_tb=True, split='test')

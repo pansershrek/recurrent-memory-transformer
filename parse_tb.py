@@ -61,7 +61,11 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
             if 'loss' in m or 'ppl' in m.lower() or 'bpc' in m.lower():
                 expr[f'best_valid_{m}'] = metrics[f'{m}/iterations/valid']['value'].min()
             else:
-                expr[f'best_valid_{m}'] = metrics[f'{m}/iterations/valid']['value'].max()
+                if f"{m}/iterations/valid" in metrics:
+                    expr[f'best_valid_{m}'] = metrics[f'{m}/iterations/valid']['value'].max()
+                else:
+                    pass
+                    # print(f"best_valid_{m} not found in metrics!\n{metrics.keys()}")
 
         # print(parse_tensorboard(str(p), ['loss/iterations/train'])['loss/iterations/train'].step)
         parsed = parse_tensorboard(str(p), ['loss/iterations/train'])
@@ -84,6 +88,22 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
     # print('\n\ncolumns: ', experiments.columns)
 
 
+
+
+# babilong new 
+paths = [
+        '/home/bulatov/runs/babilong/',
+        ]
+
+paths = [Path(p) for p in paths]
+metric_names = ['exact_match']
+new_cols = ['input_size', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
+target_cols = TGT_COLS + ['best_valid_exact_match', 'exact_match'] + new_cols
+out_path = 'results/babilong_new.csv'
+
+dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+df = pd.concat(dfs)
+df.to_csv(out_path, index=False)
     
     
     
@@ -145,39 +165,39 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 
 
 
-# # QAsper
+# # # QAsper
 
-paths = [
-        '/home/jovyan/rmt/runs/qasper/',
-        ]
+# paths = [
+#         '/home/jovyan/rmt/runs/qasper/',
+#         ]
 
-paths = [Path(p) for p in paths]
-metric_names = ['f1']
-new_cols = ['backbone_cpt', 'k2', 'model_cpt']
-target_cols = TGT_COLS + ['best_valid_f1'] + new_cols
-out_path = 'results/qasper_decoder.csv'
+# paths = [Path(p) for p in paths]
+# metric_names = ['f1']
+# new_cols = ['backbone_cpt', 'k2', 'model_cpt']
+# target_cols = TGT_COLS + ['best_valid_f1'] + new_cols
+# out_path = 'results/qasper_decoder.csv'
 
-dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-df = pd.concat(dfs)
-df.to_csv(out_path, index=False)
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
 
 
 
-# quality
+# # quality
 
-paths = [
-        '/home/jovyan/rmt/runs/quality/',
-        ]
+# paths = [
+#         '/home/jovyan/rmt/runs/quality/',
+#         ]
 
-paths = [Path(p) for p in paths]
-metric_names = ['exact_match']
-new_cols = ['backbone_cpt', 'k2', 'model_cpt']
-target_cols = TGT_COLS + ['best_valid_exact_match'] + new_cols
-out_path = 'results/quality_decoder.csv'
+# paths = [Path(p) for p in paths]
+# metric_names = ['exact_match']
+# new_cols = ['backbone_cpt', 'k2', 'model_cpt']
+# target_cols = TGT_COLS + ['best_valid_exact_match'] + new_cols
+# out_path = 'results/quality_decoder.csv'
 
-dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-df = pd.concat(dfs)
-df.to_csv(out_path, index=False)
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
 
 
 # # Babi-long compare to curriculum
@@ -300,20 +320,20 @@ df.to_csv(out_path, index=False)
 # # df = pd.concat(dfs)
 # # df.to_csv(out_path, index=False)
 
-# pile 
-paths = [
-        '/home/jovyan/rmt/runs/pile/',
-        ]
+# # pile 
+# paths = [
+#         '/home/jovyan/rmt/runs/pile/',
+#         ]
 
-paths = [Path(p) for p in paths]
-metric_names = ['loss']
-new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
-target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
-out_path = 'results/pile.csv'
+# paths = [Path(p) for p in paths]
+# metric_names = ['loss']
+# new_cols = ['backbone_cpt', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
+# target_cols = TGT_COLS + ['best_valid_loss'] + new_cols
+# out_path = 'results/pile.csv'
 
-dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
-df = pd.concat(dfs)
-df.to_csv(out_path, index=False)
+# dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]
+# df = pd.concat(dfs)
+# df.to_csv(out_path, index=False)
 
 # # arxiv 
 # paths = [
