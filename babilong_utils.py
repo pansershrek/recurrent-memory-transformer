@@ -112,6 +112,8 @@ class SentenceSampler:
         while len(sentences) == 0:
             text = self.next_sample_()
             if self.shuffle:
+                if len(text) == 0:
+                    continue
                 text = text[self.gen.choice(len(text)):] # start from random position in text
                 text = text[:sample_size * 10]          # cut too long texts to speed up tokenization
             sentences += self.sentence_tokenizer.tokenize(text)
