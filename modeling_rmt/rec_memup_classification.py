@@ -110,7 +110,7 @@ class RecurrentMemUP(torch.nn.Module):
         labels_segmented = self.segment(labels_mask=labels_mask, labels=labels)
 
         rollout = self.rmt_config.get("k2", -1)
-        pred_freq = self.rmt_config.get("pred_freq", 2)
+        pred_freq = self.rmt_config.get("prediction_frequency", 2)
         if rollout > 0:
             pred_freq = min(pred_freq, rollout)
 
