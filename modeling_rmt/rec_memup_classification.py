@@ -33,13 +33,14 @@ class MemUPModule(torch.nn.Module):
         if memory_state is None:
             memory_state = self.set_memory(input_ids.shape)
 
+        #adds memory states as prefix and suffix and fixes masks accordingly
         seg_kwargs = self.process_input(input_ids, memory_state, **kwargs)
-        predictor_mode = kwargs.get("predictor_mode", None)
+        predictor_mode = seg_kwargs.pop("predictor_mode", None)
         if predictor_mode:
-            out = self.rnn_core(**seg_kwargs)
-        else:
             out = self.predictor(**seg_kwargs)
-
+        else:
+            out = self.rnn_core(**seg_kwargs)
+        #memory state is taken from suffix and output is stripped from memory states
         out, new_memory_state = self.process_output(out, **kwargs)
 
         return out, new_memory_state
@@ -104,47 +105,76 @@ class RecurrentMemUP(torch.nn.Module):
 
     def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None,
                 output_attentions=None, output_hidden_states=None):
+
+        input_segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+        labels_segmented = self.segment(labels_mask=labels_mask, labels=labels)
+
         rollout = self.rmt_config.get("k2", -1)
         pred_freq = self.rmt_config.get("pred_freq", 2)
         if rollout > 0:
             pred_freq = min(pred_freq, rollout)
 
-        memory_state = None
-        segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
-        target_segment = self.select_target_segments(segmented)
+
+        trg_segment_inputs, trg_segment_labels = self.select_target_segments(input_segmented, labels_segmented)
 
         pred_outputs = []
+        memory_state = None
+        last_seg = len(input_segmented) - 1
+        i = 0
 
-        for seg_num, segment in enumerate(segmented[-1]):
-            rnn_out, memory_state = self.recurrent_memory(**segment, memory_state=memory_state, output_hidden_states=True)
-            #cell_outputs.append(cell_out)
+        while True:
             # if rollout is limited AND current rollout reached it's max length:
-            if rollout > 0 and (seg_num + 1) % rollout == 0:
-                memory_state = memory_state.detach()
-
-            if (seg_num + 1) % pred_freq == 0:
+            is_pred_step = self.training and (i % pred_freq == 0) and (i > 0)
+            is_last_step = i == last_seg
+            if is_pred_step or is_last_step:
                 # make prediction about target segment using current state of the memory
                 pred_out, _ = self.recurrent_memory(
-                    **target_segment,
+                    **trg_segment_inputs,
                     memory_state=memory_state,
                     predictor_mode=True,
                     output_hidden_states=True
                 )
                 pred_outputs.append(pred_out)
 
-        out = self.process_outputs(pred_outputs,
-                                   labels=labels,
-                                   labels_mask=labels_mask,
+            if i >= last_seg: break
+
+            memory_state = self.manage_mem_grads(memory_state, i)
+
+            rnn_out, memory_state = self.recurrent_memory(
+                **input_segmented[i], memory_state=memory_state, output_hidden_states=True
+            )
+            i += 1
+
+        if self.training is False:
+            if len(pred_outputs) != 1:
+                raise ValueError("We don't need intermedate predictions during evaluation!")
+
+        # if len(pred_outputs) == 0:
+        #     self.investigate_problem(input_ids, attention_mask, input_segmented, pred_outputs, rollout, pred_freq)
+        out = self.make_prediction(pred_outputs,
+                                   trg_segment_labels=trg_segment_labels,
                                    output_attentions=output_attentions,
                                    output_hidden_states=output_hidden_states)
 
         return out
 
-    def select_target_segments(self, segments):
-        target_segments = segments[-1]
-        return target_segments
+    # def investigate_problem(self, input_ids, attention_mask, segmented, pred_outputs, rollout, pred_freq):
+    #     print("INVESTIGATION:")
+    #     print(f"rollout={rollout}, pred_freq={pred_freq}")
+    #     print("sample size:", attention_mask.sum(-1))
+    #     print("size of segments:", [s['input_ids'].size(-1) for s in segmented])
+    #     print(f"number of pred_outputs: {len(pred_outputs)}")
+    #     #raise NotImplementedError()
+
+    def select_target_segments(self, *args):
+        #input_segment_trg = input_segments[-1]
+        #label_segment_trg = label_segments[-1]
+        # assert all([s['labels_mask'].sum() == 0 for s in  label_segments]), "sequences are not aligned right"
+        #return input_segment_trg, label_segment_trg
+        return tuple(a[-1] for a in args)
 
     def generate(self, input_ids, attention_mask=None, **generate_kwargs):
+        raise NotImplementedError("RecurrentMemUP.generate")
         memory_state = None
         segmented = self.segment(input_ids=input_ids, attention_mask=attention_mask)
 
@@ -185,24 +215,26 @@ class RecurrentMemUP(torch.nn.Module):
             raise NotImplementedError
         return segments
 
-    def make_prediction(self, cell_outputs, **kwargs):
+    def make_prediction(self, cell_outputs, trg_segment_labels, **kwargs):
         out = CausalLMOutputWithCrossAttentions()
-        full_logits = torch.cat([o.logits for o in cell_outputs], dim=1)
+        full_logits = torch.cat([o.logits for o in cell_outputs], dim=0)
         full_hidden_states = tuple(
-            [torch.cat(layer_hs, dim=1) for layer_hs in zip(*[o.hidden_states for o in cell_outputs])])
+             [torch.cat(layer_hs, dim=0) for layer_hs in zip(*[o.hidden_states for o in cell_outputs])])
 
-        labels = kwargs.get('labels')
+        labels = trg_segment_labels.get("labels", None)
+        #labels = kwargs.get('labels')
         if labels is not None:
+            labels = labels.repeat(len(cell_outputs), 1)
             shift_labels = labels[..., 1:].contiguous()
             shift_logits = full_logits[..., :-1, :].contiguous()
             flat_labels = shift_labels.view(-1)
             flat_logits = shift_logits.view(-1, shift_logits.size(-1))
 
             loss_fct = CrossEntropyLoss()
-            labels_mask = kwargs.get('labels_mask')
+            labels_mask = trg_segment_labels.get('labels_mask')
             if labels_mask is not None:
+                labels_mask = labels_mask.repeat(len(cell_outputs), 1)
                 shift_mask = labels_mask[..., :-1].contiguous()
-
                 flat_labels = flat_labels[shift_mask.view(-1)]
                 flat_logits = flat_logits[shift_mask.view(-1)]
 
@@ -227,14 +259,8 @@ class RecurrentMemUP(torch.nn.Module):
 
         return out
 
-    def manage_gradients(self, memory_state, seg_num):
-        raise NotImplementedError("Not implemented")
-        # k2, max_n_segments = self.rmt_config.get('k2'), self.rmt_config.get('max_n_segments')
-        # if seg_num == 0 \
-        #         or k2 in {-1, None} \
-        #         or seg_num + k2 > max_n_segments:
-        #     return True
-        #
-        # memory_state = memory_state.detach()
-        # return False
-
+    def manage_mem_grads(self, memory_state, seg_num):
+        r = self.rmt_config.get("k2", -1)
+        #if Trancation is True AND rollout is ended AND mem is not None
+        if r > 0 and seg_num % r == 0 and memory_state is not None:
+            return memory_state.detach()

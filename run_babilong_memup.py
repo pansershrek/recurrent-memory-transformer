@@ -211,24 +211,27 @@ if __name__ == '__main__':
                                             tokenizer=tokenizer,
                                             sample_size=args.sample_size)
     
-    id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.bos_token_id
     gen_token = tokenizer.encode('GEN')[0]
     eos_token = tokenizer.eos_token_id
 
     def collate_fn(batch):
         targets = [torch.tensor(b['target_tokens']) for b in batch]
-        input_ids = [torch.tensor(b['input_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]) for b in batch]
-        gen_inputs = [torch.tensor(b['input_tokens'] + [gen_token]) for b in batch]
+        input_ids = [
+            torch.tensor(b['input_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]).flip([0]) #flipped
+            for b in batch
+        ]
+        gen_inputs = [torch.tensor(b['input_tokens'] + [gen_token]).flip([0]) for b in batch] #flipped
 
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         labels_mask = [torch.zeros_like(b, dtype=bool) for b in input_ids]
         for m, t in zip(labels_mask, targets):
-            m[-len(t) - 2:] = True
+            m[:len(t) + 2] = True #flipped
 
-        input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True)
-        gen_inputs = pad_sequence(gen_inputs, padding_value=id_pad_value, batch_first=True)
-        attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True)
-        labels_mask = pad_sequence(labels_mask, padding_value=0, batch_first=True)
+        input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True).flip([1])
+        gen_inputs = pad_sequence(gen_inputs, padding_value=id_pad_value, batch_first=True).flip([1])
+        attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True).flip([1])
+        labels_mask = pad_sequence(labels_mask, padding_value=0, batch_first=True).flip([1])
 
         collated = {}
         collated['input_ids'] = collated['labels'] = input_ids
@@ -367,9 +370,12 @@ if __name__ == '__main__':
         data['labels'] = batch['labels']
         data['loss'] = output['loss']
         data['target_text'] = batch['target_text']
+        B = data['labels'].size(0)
+        segments = model.segment(labels_mask=batch['labels_mask'])
+        trg_segment = model.select_target_segments(segments)[0]
         if 'logits' in output:
-            data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
-            data['predicted_labels'] = [p[m] for p, m in zip(data['predictions'], batch['labels_mask'])]
+            data['predictions'] = torch.argmax(output['logits'][-B:].detach(), dim=-1)
+            data['predicted_labels'] = [p[m] for p, m in zip(data['predictions'], trg_segment['labels_mask'])]
         if 'generation_outputs' in output:
             data['generation_outputs'] = output['generation_outputs']
         return data
