@@ -166,6 +166,8 @@ if __name__ == '__main__':
                     args[k] = exp_cfg[k]
             args = Namespace(**args)
             args.model_path = None
+            args.lr_scheduler = None
+            args.reset_iteration = False
 
     accelerator = accelerate.Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
     from accelerate.logging import get_logger
@@ -388,7 +390,11 @@ if __name__ == '__main__':
     logger.info(f'Using optimizer class: {optimizer_cls}')
 
     # todo: group optimizer params
-    optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)    
+    if args.validate_only:
+        # to save gpu ram
+        optimizer = None
+    else:
+        optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     # if args.model_cpt or args.backbone_cpt:
     #     optimizer.load_state_dict(cpt['optimizer_state_dict'])
 
@@ -417,8 +423,10 @@ if __name__ == '__main__':
     # - compute metrics on batch lvl
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
     # scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
-
-    model, optimizer = accelerator.prepare(model, optimizer)
+    if optimizer is not None:
+        model, optimizer = accelerator.prepare(model, optimizer)
+    else:
+        model = accelerator.prepare(model)
     # model, optimizer, _ = accelerator.prepare(model, optimizer, train_dataloader)
 
     def metrics_fn(data):
