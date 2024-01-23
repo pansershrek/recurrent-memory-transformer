@@ -11,8 +11,7 @@ MEMORY_CELL=modeling_rmt.rec_memup_classification:MemUPModule #modeling_rmt.lang
 RECURRENT_WRAPPER=modeling_rmt.rec_memup_classification:RecurrentMemUP
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_DATASET=qa1_single-supporting-fact
-NOISE_DATASET=wikitext #pg19
-NOISE_DATASET_SPLIT=wikitext-2-raw-v1
+NOISE_DATASET=pg19 #pg19
 METRIC=exact_match
 
 MODEL_NAME=gpt2  # backbone model
@@ -42,7 +41,6 @@ echo gradient accumulation steps $GRAD_ACC_STEPS
 
 accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29003 run_babilong_memup.py \
       --task_dataset $TASK_DATASET \
-      --noise_dataset $NOISE_DATASET \
       --noise_dataset_split $NOISE_DATASET_SPLIT \
       --babi_path data/tasks_1-20_v1-2/en-10k \
       --model_path ../runs/babilong/${TASK_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}/run_$N \
