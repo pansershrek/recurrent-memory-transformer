@@ -183,7 +183,7 @@ if __name__ == '__main__':
     # background text
     qa_margin = 20          # leave space for questions and answers
     if args.vary_n_segments:  # choose sample sizes according to each number of segments up to args.max_n_segments
-        train_sample_size = [int(args.sample_size / i) for i in range(1, args.max_n_segments + 1)]
+        train_sample_size = [int(args.segment_size * i) for i in range(1, args.max_n_segments + 1)]
         train_sample_size = [s - qa_margin for s in train_sample_size]
         logger.info(f'Will be choosing sample size randomly from {train_sample_size} for training')
     else:
@@ -429,7 +429,10 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs={"pad_token_id": id_pad_value, "max_new_tokens":10})
+                      generate_kwargs={
+                          "pad_token_id": id_pad_value,
+                          "max_new_tokens":246
+                    })
 
     if not args.validate_only:
         # train loop

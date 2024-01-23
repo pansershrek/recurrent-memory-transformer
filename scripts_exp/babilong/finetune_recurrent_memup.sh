@@ -67,7 +67,8 @@ accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29003 run_babi
       --early_stopping_patience 15 \
       --seed $(($N+42)) \
       --clip_grad_norm 1.0 \
-      --segment_alignment right
+      --segment_alignment right \
+      --prediction_frequency 1
         
 done
 done
