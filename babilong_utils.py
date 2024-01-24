@@ -86,8 +86,7 @@ class SentenceSampler:
         self.max_sentence_len = max_sentence_len
         self.sentence_tokenizer = nltk.PunktSentenceTokenizer()
         self.shuffle = shuffle
-        if random_seed:
-            self.gen = np.random.default_rng(seed=random_seed)
+        self.gen = np.random.default_rng(seed=random_seed)
 
     def get_sample(self, sample_size):        
         sample = []
