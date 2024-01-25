@@ -230,11 +230,18 @@ if __name__ == '__main__':
     eos_token = tokenizer.eos_token_id
 
     def collate_fn(batch):
+        global min_length, max_length
         targets = [torch.tensor(b['target_tokens']) for b in batch]
         input_ids = [
             torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]).flip([0]) #flipped
             for b in batch
         ]
+
+        min_length = min(len(s) for s in input_ids)
+        max_length = max(len(s) for s in input_ids)
+        if max_length - min_length > 10:
+            raise ValueError(f"max len is: {max_length} and min len is: {min_length}")
+
         gen_inputs = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token]).flip([0]) for b in batch] #flipped
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         labels_mask = [torch.zeros_like(b, dtype=bool) for b in input_ids]
@@ -336,7 +343,6 @@ if __name__ == '__main__':
         
         cell = memory_cell_cls(
             rnn_core=model,
-            predictor=model,
             num_mem_tokens=args.num_mem_tokens
         )
         if args.segment_alignment not in {None, 'left'}:
@@ -389,7 +395,8 @@ if __name__ == '__main__':
     optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)    
     # if args.model_cpt or args.backbone_cpt:
     #     optimizer.load_state_dict(cpt['optimizer_state_dict'])
-
+    select_target_segments = model.select_target_segments
+    sequence_splitter = model.sequence_splitter
     def keep_for_metrics_fn(batch, output):
         # select data from batch and model output that would be used to compute metrics
         data = {}
@@ -397,8 +404,8 @@ if __name__ == '__main__':
         data['loss'] = output['loss']
         data['target_text'] = batch['target_text']
         B = data['labels'].size(0)
-        segments = model.segment(labels_mask=batch['labels_mask'])
-        trg_segment = model.select_target_segments(segments)[0]
+        segments = sequence_splitter.segment(labels_mask=batch['labels_mask'])
+        trg_segment = select_target_segments(segments)[0]
         if 'logits' in output:
             data['predictions'] = torch.argmax(output['logits'][-B:].detach(), dim=-1)
             data['predicted_labels'] = [p[m] for p, m in zip(data['predictions'], trg_segment['labels_mask'])]
@@ -457,7 +464,7 @@ if __name__ == '__main__':
                       keep_for_metrics_fn=keep_for_metrics_fn, metrics_fn=metrics_fn,
                       ###booydar
                       batch_metrics_fn=batch_metrics_fn,
-                      generate_kwargs={"pad_token_id": id_pad_value, "max_length":1010})
+                      generate_kwargs={"pad_token_id": id_pad_value, "max_length":10})
 
     if not args.validate_only:
         # train loop

@@ -108,6 +108,9 @@ class RecurrentWrapper(torch.nn.Module):
     
     def generate(self, input_ids, attention_mask=None, **generate_kwargs):
         memory_state = None
+        if "max_new_tokens" in generate_kwargs:
+            value = generate_kwargs.pop("max_length", None)
+        #print("GENERATE:", generate_kwargs)
         segmented = self.segment(input_ids=input_ids, attention_mask=attention_mask)
 
         # print('\n\n\nGenerate: ', [s['input_ids'].shape for s in segmented])

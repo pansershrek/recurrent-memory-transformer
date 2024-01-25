@@ -431,7 +431,7 @@ if __name__ == '__main__':
                       batch_metrics_fn=batch_metrics_fn,
                       generate_kwargs={
                           "pad_token_id": id_pad_value,
-                          "max_new_tokens":246
+                          "max_new_tokens":10
                     })
 
     if not args.validate_only:

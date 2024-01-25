@@ -11,24 +11,24 @@ MEMORY_CELL=modeling_rmt.rec_memup_classification:MemUPModule #modeling_rmt.lang
 RECURRENT_WRAPPER=modeling_rmt.rec_memup_classification:RecurrentMemUP
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_DATASET=qa1_single-supporting-fact
-NOISE_DATASET=pg19 #pg19
+NOISE_DATASET=pg19
 METRIC=exact_match
 
 MODEL_NAME=gpt2  # backbone model
-SEGMENT_SIZE=64 # size of one segment in tokens
-SAMPLE_SIZE=256 # length of task sample in tokens
-MEMORY_SIZE=10
+SEGMENT_SIZE=128 # size of one segment in tokens
+SAMPLE_SIZE=512 # length of task sample in tokens
+MEMORY_SIZE=16
 MAX_N_SEGMENTS=4
 
-ITERS=5000
-TBS=64
-BS=8
+ITERS=50
+TBS=16
+BS=4
 
 GRAD_ACC_STEPS=$(($TBS/($BS*$NP)))
 SCHEDULER=linear
 LR=1e-04
 
-for N in 1
+for PRED_FREQ in 1 2 4
 do
 
 K2=-1   # BPTT unroll length
@@ -36,14 +36,14 @@ K2=-1   # BPTT unroll length
 ACCEL_CONFIG=./accel_configs/accelerate.yaml
 
 echo RUNNING: TASK_DATASET $TASK_DATASET MEMORY_SIZE $MEMORY_SIZE SEGMENT_SIZE $SEGMENT_SIZE 
-echo SAMPLE_SIZE $SAMPLE_SIZE MODEL_NAME $MODEL_NAME LR $LR N $N
+echo SAMPLE_SIZE $SAMPLE_SIZE MODEL_NAME $MODEL_NAME LR $LR  PRED_FREQ $PRED_FREQ
 echo gradient accumulation steps $GRAD_ACC_STEPS
 
 accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29003 run_babilong_memup.py \
       --task_dataset $TASK_DATASET \
-      --noise_dataset_split $NOISE_DATASET_SPLIT \
+      --noise_dataset $NOISE_DATASET \
       --babi_path data/tasks_1-20_v1-2/en-10k \
-      --model_path ../runs/babilong/${TASK_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${INPUT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}/run_$N \
+      --model_path ../runs/debug/${TASK_DATASET}/$MODEL_NAME/${MAX_N_SEGMENTS}_${SEGMENT_SIZE}_align_right_k2_${K2}_pf_${PRED_FREQ}/run_$N \
       --from_pretrained $MODEL_NAME \
       --model_type $MODEL_TYPE \
       --memory_cell_cls $MEMORY_CELL \
@@ -68,8 +68,8 @@ accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29003 run_babi
       --seed $(($N+42)) \
       --clip_grad_norm 1.0 \
       --segment_alignment right \
-      --prediction_frequency 1
-        
+      --prediction_frequency $PRED_FREQ
+      #--use_generate_on_valid \
 done
 done
 done

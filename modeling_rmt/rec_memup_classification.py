@@ -8,10 +8,13 @@ import random
 
 class MemUPModule(torch.nn.Module):
 
-    def __init__(self, rnn_core, predictor, num_mem_tokens):
+    def __init__(self,
+                 rnn_core,
+                 #predictor,
+                 num_mem_tokens):
         super().__init__()
         self.rnn_core = rnn_core
-        self.predictor = predictor
+        #self.predictor = predictor
         self.create_memory(num_mem_tokens)
 
     def create_memory(self, num_mem_tokens):
@@ -35,11 +38,12 @@ class MemUPModule(torch.nn.Module):
 
         #adds memory states as prefix and suffix and fixes masks accordingly
         seg_kwargs = self.process_input(input_ids, memory_state, **kwargs)
-        predictor_mode = seg_kwargs.pop("predictor_mode", None)
-        if predictor_mode:
-            out = self.predictor(**seg_kwargs)
-        else:
-            out = self.rnn_core(**seg_kwargs)
+        #predictor_mode = seg_kwargs.pop("predictor_mode", None)
+        #if predictor_mode:
+        #    out = self.predictor(**seg_kwargs)
+        #else:
+        #    out = self.rnn_core(**seg_kwargs)
+        out = self.rnn_core(**seg_kwargs)
         #memory state is taken from suffix and output is stripped from memory states
         out, new_memory_state = self.process_output(out, **kwargs)
 
@@ -50,7 +54,7 @@ class MemUPModule(torch.nn.Module):
             memory_state = self.set_memory(input_ids.shape)
 
         seg_kwargs = self.process_input(input_ids, memory_state, attention_mask=attention_mask)
-        out = self.model.generate(inputs_embeds=seg_kwargs['inputs_embeds'],
+        out = self.predictor.generate(inputs_embeds=seg_kwargs['inputs_embeds'],
                                   attention_mask=seg_kwargs['attention_mask'], **generate_kwargs)
         return out
 
@@ -102,12 +106,13 @@ class RecurrentMemUP(torch.nn.Module):
         super().__init__()
         self.recurrent_memory = recurrent_memory
         self.rmt_config = rmt_kwargs
+        self.sequence_splitter = SequenceSplitter(rmt_kwargs)
 
     def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None,
                 output_attentions=None, output_hidden_states=None):
 
-        input_segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
-        labels_segmented = self.segment(labels_mask=labels_mask, labels=labels)
+        input_segmented = self.sequence_splitter.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+        labels_segmented = self.sequence_splitter.segment(labels_mask=labels_mask, labels=labels)
 
         rollout = self.rmt_config.get("k2", -1)
         pred_freq = self.rmt_config.get("prediction_frequency", 2)
@@ -131,7 +136,7 @@ class RecurrentMemUP(torch.nn.Module):
                 pred_out, _ = self.recurrent_memory(
                     **trg_segment_inputs,
                     memory_state=memory_state,
-                    predictor_mode=True,
+                    #predictor_mode=True,
                     output_hidden_states=True
                 )
                 pred_outputs.append(pred_out)
@@ -165,8 +170,8 @@ class RecurrentMemUP(torch.nn.Module):
     #     print("size of segments:", [s['input_ids'].size(-1) for s in segmented])
     #     print(f"number of pred_outputs: {len(pred_outputs)}")
     #     #raise NotImplementedError()
-
-    def select_target_segments(self, *args):
+    @staticmethod
+    def select_target_segments(*args):
         #input_segment_trg = input_segments[-1]
         #label_segment_trg = label_segments[-1]
         # assert all([s['labels_mask'].sum() == 0 for s in  label_segments]), "sequences are not aligned right"
@@ -174,46 +179,53 @@ class RecurrentMemUP(torch.nn.Module):
         return tuple(a[-1] for a in args)
 
     def generate(self, input_ids, attention_mask=None, **generate_kwargs):
-        raise NotImplementedError("RecurrentMemUP.generate")
         memory_state = None
+        if "max_new_tokens" in generate_kwargs:
+            value = generate_kwargs.pop("max_length", None)
+
         segmented = self.segment(input_ids=input_ids, attention_mask=attention_mask)
 
         for seg_num, segment in enumerate(segmented[:-1]):
             cell_out, memory_state = self.recurrent_memory(**segment, memory_state=memory_state, output_hidden_states=True)
 
         final_segment = segmented[-1]
-        out = self.recurrent_memory.generate(**final_segment, memory_state=memory_state, **generate_kwargs)
+        out = self.recurrent_memory.generate(
+            **final_segment,
+            memory_state=memory_state,
+            predictor_mode=True,
+            **generate_kwargs
+        )
 
         return out
 
-    def segment(self, **kwargs):
-        segments = []
-        for k, tensor in kwargs.items():
-            if tensor is not None:
-                k_segments = self.split_tensor(tensor)
-                for s, k_seg in enumerate(k_segments):
-                    if s < len(segments):
-                        segments[s][k] = k_seg
-                    else:
-                        segments.append({k: k_seg})
-
-        return segments
-
-    def split_tensor(self, tensor):
-        align = self.rmt_config.get('segment_alignment')
-        segment_size = self.rmt_config.get('segment_size')
-        if align in {'left', None}:
-            split_inds = list(range(0, tensor.shape[1], segment_size)) + [tensor.shape[1]]
-            segments = [tensor[:, start:end] for (start, end) in zip(split_inds, split_inds[1:])]
-        elif align in {'right', None}:
-            split_inds = (list(range(tensor.shape[1], 0, -segment_size)) + [0])[::-1]
-            segments = [tensor[:, start:end] for (start, end) in zip(split_inds, split_inds[1:])]
-        elif align == 'center':
-            n_seg = math.ceil(tensor.shape[1] / segment_size)
-            segments = torch.chunk(tensor, n_seg, dim=1)
-        else:
-            raise NotImplementedError
-        return segments
+    # def segment(self, **kwargs):
+    #     segments = []
+    #     for k, tensor in kwargs.items():
+    #         if tensor is not None:
+    #             k_segments = self.split_tensor(tensor)
+    #             for s, k_seg in enumerate(k_segments):
+    #                 if s < len(segments):
+    #                     segments[s][k] = k_seg
+    #                 else:
+    #                     segments.append({k: k_seg})
+    #
+    #     return segments
+    #
+    # def split_tensor(self, tensor):
+    #     align = self.rmt_config.get('segment_alignment')
+    #     segment_size = self.rmt_config.get('segment_size')
+    #     if align in {'left', None}:
+    #         split_inds = list(range(0, tensor.shape[1], segment_size)) + [tensor.shape[1]]
+    #         segments = [tensor[:, start:end] for (start, end) in zip(split_inds, split_inds[1:])]
+    #     elif align in {'right', None}:
+    #         split_inds = (list(range(tensor.shape[1], 0, -segment_size)) + [0])[::-1]
+    #         segments = [tensor[:, start:end] for (start, end) in zip(split_inds, split_inds[1:])]
+    #     elif align == 'center':
+    #         n_seg = math.ceil(tensor.shape[1] / segment_size)
+    #         segments = torch.chunk(tensor, n_seg, dim=1)
+    #     else:
+    #         raise NotImplementedError
+    #     return segments
 
     def make_prediction(self, cell_outputs, trg_segment_labels, **kwargs):
         out = CausalLMOutputWithCrossAttentions()
@@ -264,3 +276,41 @@ class RecurrentMemUP(torch.nn.Module):
         #if Trancation is True AND rollout is ended AND mem is not None
         if r > 0 and seg_num % r == 0 and memory_state is not None:
             return memory_state.detach()
+
+
+class SequenceSplitter:
+    """
+    Splits long sequences in the batch into segments of smaller size.
+    """
+    def __init__(self, rmt_config):
+        super().__init__()
+        self.align = rmt_config.get('segment_alignment')
+        self.segment_size = rmt_config.get('segment_size')
+    def segment(self, **kwargs):
+        segments = []
+        for k, tensor in kwargs.items():
+            if tensor is not None:
+                k_segments = self.split_tensor(tensor)
+                for s, k_seg in enumerate(k_segments):
+                    if s < len(segments):
+                        segments[s][k] = k_seg
+                    else:
+                        segments.append({k: k_seg})
+
+        return segments
+
+    def split_tensor(self, tensor):
+        align = self.align
+        segment_size = self.segment_size
+        if align in {'left', None}:
+            split_inds = list(range(0, tensor.shape[1], segment_size)) + [tensor.shape[1]]
+            segments = [tensor[:, start:end] for (start, end) in zip(split_inds, split_inds[1:])]
+        elif align in {'right', None}:
+            split_inds = (list(range(tensor.shape[1], 0, -segment_size)) + [0])[::-1]
+            segments = [tensor[:, start:end] for (start, end) in zip(split_inds, split_inds[1:])]
+        elif align == 'center':
+            n_seg = math.ceil(tensor.shape[1] / segment_size)
+            segments = torch.chunk(tensor, n_seg, dim=1)
+        else:
+            raise NotImplementedError
+        return segments
