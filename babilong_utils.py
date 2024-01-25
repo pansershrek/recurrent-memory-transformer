@@ -86,8 +86,7 @@ class SentenceSampler:
         self.max_sentence_len = max_sentence_len
         self.sentence_tokenizer = nltk.PunktSentenceTokenizer()
         self.shuffle = shuffle
-        if random_seed:
-            self.gen = np.random.default_rng(seed=random_seed)
+        self.gen = np.random.default_rng(seed=random_seed)
 
     def get_sample(self, sample_size):        
         sample = []
@@ -112,6 +111,8 @@ class SentenceSampler:
         while len(sentences) == 0:
             text = self.next_sample_()
             if self.shuffle:
+                if len(text) == 0:
+                    continue
                 text = text[self.gen.choice(len(text)):] # start from random position in text
                 text = text[:sample_size * 10]          # cut too long texts to speed up tokenization
             sentences += self.sentence_tokenizer.tokenize(text)
@@ -123,9 +124,9 @@ class SentenceSampler:
         if self.shuffle:
             self.total_tokens = 0
             sample_ind = self.gen.choice(len(self.dataset))
-            sample = self.dataset[sample_ind]['text']
+            sample = self.dataset[int(sample_ind)]['text']
         else:
-            sample = self.dataset[self.sample_ind]['text']
+            sample = self.dataset[int(self.sample_ind)]['text']
             self.sample_ind += 1
             self.sample_ind = self.sample_ind % len(self.dataset) 
         return sample
