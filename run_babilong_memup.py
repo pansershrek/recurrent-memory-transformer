@@ -204,10 +204,8 @@ if __name__ == '__main__':
         # do not sample sentences longer than task position range * 0.5
         max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * args.sample_size)
 
-    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer,
-                                          max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
-    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len,
-                                         shuffle=True, random_seed=42)
+    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=None)
+    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
 
     train_dataset = NoiseInjectionDataset(task_dataset=task_dataset_train,
                                             noise_sampler=noise_sampler_train,
@@ -230,28 +228,19 @@ if __name__ == '__main__':
     eos_token = tokenizer.eos_token_id
 
     def collate_fn(batch):
-        global min_length, max_length
         targets = [torch.tensor(b['target_tokens']) for b in batch]
-        input_ids = [
-            torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]).flip([0]) #flipped
-            for b in batch
-        ]
+        input_ids = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]) for b in batch]
+        gen_inputs = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token]) for b in batch]
 
-        min_length = min(len(s) for s in input_ids)
-        max_length = max(len(s) for s in input_ids)
-        if max_length - min_length > 10:
-            raise ValueError(f"max len is: {max_length} and min len is: {min_length}")
-
-        gen_inputs = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token]).flip([0]) for b in batch] #flipped
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         labels_mask = [torch.zeros_like(b, dtype=bool) for b in input_ids]
         for m, t in zip(labels_mask, targets):
-            m[:len(t) + 2] = True #flipped
+            m[-len(t) - 2:] = True
 
-        input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True).flip([1])
-        gen_inputs = pad_sequence(gen_inputs, padding_value=id_pad_value, batch_first=True).flip([1])
-        attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True).flip([1])
-        labels_mask = pad_sequence(labels_mask, padding_value=0, batch_first=True).flip([1])
+        input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True)
+        gen_inputs = pad_sequence(gen_inputs, padding_value=id_pad_value, batch_first=True)
+        attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True)
+        labels_mask = pad_sequence(labels_mask, padding_value=0, batch_first=True)
 
         collated = {}
         collated['input_ids'] = collated['labels'] = input_ids
@@ -262,13 +251,39 @@ if __name__ == '__main__':
         collated['target_text'] = [b['answer'] for b in batch]
         return collated
 
-    #======================old dataload ================
-    # train_dataset, valid_dataset, test_dataset = dataset["train"], dataset["validation"], dataset["test"]
-    # kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers}
-    # per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
-    # train_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=train_dataset, collate_fn=collate_fn, shuffle=True)
-    # test_dataloader = DataLoader(batch_size=per_worker_batch_size, dataset=test_dataset, collate_fn=collate_fn, shuffle=False)
-    #====================== /old dataload ==============
+    # def collate_fn_flipped(batch):
+    #     global min_length, max_length
+    #     targets = [torch.tensor(b['target_tokens']) for b in batch]
+    #     input_ids = [
+    #         torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]).flip([0]) #flipped
+    #         for b in batch
+    #     ]
+    #
+    #     min_length = min(len(s) for s in input_ids)
+    #     max_length = max(len(s) for s in input_ids)
+    #     if max_length - min_length > 10:
+    #         raise ValueError(f"max len is: {max_length} and min len is: {min_length}")
+    #
+    #     gen_inputs = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token]).flip([0]) for b in batch] #flipped
+    #     attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
+    #     labels_mask = [torch.zeros_like(b, dtype=bool) for b in input_ids]
+    #     for m, t in zip(labels_mask, targets):
+    #         m[:len(t) + 2] = True #flipped
+    #
+    #     input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True).flip([1])
+    #     gen_inputs = pad_sequence(gen_inputs, padding_value=id_pad_value, batch_first=True).flip([1])
+    #     attention_mask = pad_sequence(attention_mask, padding_value=0, batch_first=True).flip([1])
+    #     labels_mask = pad_sequence(labels_mask, padding_value=0, batch_first=True).flip([1])
+    #
+    #     collated = {}
+    #     collated['input_ids'] = collated['labels'] = input_ids
+    #     collated['input_ids_generate'] = gen_inputs
+    #     collated['labels_mask'] = labels_mask
+    #     collated['attention_mask'] = attention_mask.bool()
+    #     collated['attention_mask_generate'] = (gen_inputs != id_pad_value).bool()
+    #     collated['target_text'] = [b['answer'] for b in batch]
+    #     return collated
+
     kwargs = {'pin_memory': True, 'num_workers': args.data_n_workers, 'collate_fn': collate_fn}
     per_worker_batch_size = args.batch_size * args.gradient_accumulation_steps
     train_sampler = DistributedSampler(train_dataset, rank=accelerator.process_index,

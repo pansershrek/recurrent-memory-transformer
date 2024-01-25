@@ -195,7 +195,7 @@ if __name__ == '__main__':
         # do not sample sentences longer than task position range * 0.5
         max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * args.sample_size)
         
-    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
+    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=None)
     noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
 
     train_dataset = NoiseInjectionDataset(task_dataset=task_dataset_train,
