@@ -92,19 +92,24 @@ class SentenceSampler:
         sample = []
         total_len = 0
         while True:
-            for sent in self.sentences: # add new sentence until sample_size is reached
+            sentences = list(self.sentences)
+            for i, sent in enumerate(sentences): # add new sentence until sample_size is reached
                 tokenized = self.tokenizer.encode(sent, add_special_tokens=False)
                 if not self.length_is_ok(tokenized):
                     continue
                 total_len += len(tokenized)
                 sample.append(tokenized)
-                self.sentences = self.sentences[1:]
+                # 1) - updating list while iterating over it, 2) - don't like updating it on every step
+                #self.sentences = self.sentences[1:]
                 if total_len >= sample_size:
+                    self.sentences = self.sentences[i+1:]
                     cutoff = total_len - sample_size
                     if cutoff > 0:
-                        sample[-1] = sample[-1][:-cutoff] 
+                        sample[-1] = sample[-1][:-cutoff]
                     return sample
-            self.sample_sentences_(sample_size)
+
+            self.sentences = []
+            self.sample_sentences_(sample_size) #appends new sentences, can be updated to just return new sentences
         
     def sample_sentences_(self, sample_size):
         sentences = []
