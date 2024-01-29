@@ -11,10 +11,6 @@ class MemoryCellGenerate(MemoryCell):
         out = self.model(**seg_kwargs)
         out, new_memory_state = self.process_output(out, **kwargs)
 
-        # print('\n\n\n\nseg_kwargs: ', seg_kwargs)
-        # print('out: ', out)
-        # raise ValueError
-
         return out, new_memory_state
     
     def generate(self, input_ids, memory_state, attention_mask=None, **generate_kwargs):
@@ -22,9 +18,6 @@ class MemoryCellGenerate(MemoryCell):
             memory_state = self.set_memory(input_ids.shape)
 
         seg_kwargs = self.process_input(input_ids, memory_state, attention_mask=attention_mask, write_mem=False)
-        # print("\n\nGeneration")
-        # print("inputs_embeds", seg_kwargs['inputs_embeds'].shape)
-        # print("generate_kwargs", generate_kwargs.keys(), generate_kwargs)
         out = self.model.generate(inputs_embeds=seg_kwargs['inputs_embeds'], attention_mask=seg_kwargs['attention_mask'], **generate_kwargs)
         return out
 
@@ -98,6 +91,65 @@ class MemoryCellCustomMemoryV1(MemoryCell):
     
 
 from modeling_rmt.language_modeling import RecurrentWrapper
+class RecurrentWrapperLight(RecurrentWrapper):
+    def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
+        memory_state = None
+        segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+
+        for seg_num, segment in enumerate(segmented):
+            cell_out, memory_state = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
+            memory_state = self.manage_gradients(memory_state, seg_num)
+        cell_outputs = [cell_out]
+
+        out = self.process_outputs(cell_outputs, labels=labels, 
+                                   labels_mask=labels_mask,
+                                   output_attentions=output_attentions, 
+                                   output_hidden_states=output_hidden_states)
+        return out
+    
+    def process_outputs(self, cell_outputs, **kwargs):
+        out = CausalLMOutputWithCrossAttentions()
+        full_logits = torch.cat([o.logits for o in cell_outputs], dim=1)
+        full_hidden_states = tuple([torch.cat(layer_hs, dim=1) for layer_hs in zip(*[o.hidden_states for o in cell_outputs])])
+
+        labels = kwargs.get('labels')
+        if labels is not None:
+            shift_labels = labels[..., 1:]
+            shift_logits = full_logits[..., :-1, :].contiguous()
+            shift_labels = shift_labels[:, -shift_logits.shape[1]:].contiguous()
+            flat_labels = shift_labels.view(-1)
+            flat_logits = shift_logits.view(-1, shift_logits.size(-1))
+            
+            loss_fct = CrossEntropyLoss()
+            labels_mask = kwargs.get('labels_mask')
+            if labels_mask is not None:
+                shift_mask = labels_mask[..., :-1]
+                shift_mask = shift_mask[:, -shift_logits.shape[1]:].contiguous()
+
+                flat_labels = flat_labels[shift_mask.view(-1)]
+                flat_logits = flat_logits[shift_mask.view(-1)]
+     
+            out['loss'] = loss_fct(flat_logits, flat_labels)
+            if out['loss'] is None:
+                raise ValueError
+        else:
+            out['loss'] = 0
+
+        out['logits'] = full_logits
+        segment_keys = ['loss', 'logits']
+        if kwargs.get('output_attentions'):
+            segment_keys.append('attentions')
+        if kwargs.get('output_hidden_states'):
+            segment_keys.append('hidden_states')
+            out['hidden_states'] = full_hidden_states
+
+        for seg_num, o in enumerate(cell_outputs):
+            for key, value in o.items():
+                if any([sk in key for sk in segment_keys]):
+                    out[f'{key}_{seg_num}'] = value
+
+        return out 
+    
 class RecurrentWrapperAllMemories(RecurrentWrapper):
     def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
         segmented = self.segment(input_ids=input_ids, inputs_embeds=inputs_embeds, attention_mask=attention_mask)
