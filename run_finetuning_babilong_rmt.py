@@ -406,7 +406,16 @@ if __name__ == '__main__':
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
         metrics = {}
-        if 'predictions' in data:
+        if 'generation_outputs' in data:
+            generation_outputs = tokenizer.batch_decode([d for d in data['generation_outputs']], add_special_tokens=False)
+            for i, o in enumerate(generation_outputs):
+                if '<|endoftext|>' in o:
+                    # print(f"gt: {data['target_text'][i]}, generated {o}")
+                    generation_outputs[i] = o.split('<|endoftext|>')[1].strip()
+
+            metrics['exact_match'] = np.mean([text == pred for text, pred in zip (data['target_text'], generation_outputs)])
+
+        elif 'predictions' in data:
             y, p = data['labels'], data['predictions']
             predicted_labels = tokenizer.batch_decode(data['predicted_labels'], add_special_tokens=False)
             for i, l in enumerate(predicted_labels):
