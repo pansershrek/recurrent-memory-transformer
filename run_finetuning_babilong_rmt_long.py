@@ -382,12 +382,8 @@ if __name__ == '__main__':
             generation_outputs = tokenizer.batch_decode(output['generation_outputs'][:, 1:], add_special_tokens=False)
 
             for i, o in enumerate(generation_outputs):
-                print(f"gt: {batch['target_text'][i]}, generated {o}")
                 if '<|endoftext|>' in o:
-                    print(o.split('<|endoftext|>'))
                     generation_outputs[i] = o.split('<|endoftext|>')[0].strip()
-
-                print(f"generated corrected to {generation_outputs[i]}, {generation_outputs[i] == batch['target_text'][i]}\n\n")
             
 
             num_correct = np.sum([text == pred for text, pred in zip (batch['target_text'], generation_outputs)])
