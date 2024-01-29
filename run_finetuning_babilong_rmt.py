@@ -171,7 +171,13 @@ if __name__ == '__main__':
 
     # Prepare datasets
     logger.info(f'preparing dataset for {args.task_dataset}')
-    noise_dataset = datasets.load_dataset(args.noise_dataset, args.noise_dataset_split)
+    try:
+        noise_dataset = datasets.load_dataset(args.noise_dataset, args.noise_dataset_split)
+        noise_dataset_train = noise_dataset['train']
+        noise_dataset_test = noise_dataset['test']
+    except ConnectionError:
+        noise_dataset_train = datasets.Dataset.from_file('/home/jovyan/.cache/huggingface/datasets/pg19/default/0.1.0/64837d6fce7251337df051ca74e9a5435d1c9cb7f3033ba257826e44d338f83c/pg19-train.arrow')
+        noise_dataset_test = datasets.Dataset.from_file('/home/jovyan/.cache/huggingface/datasets/pg19/default/0.1.0/64837d6fce7251337df051ca74e9a5435d1c9cb7f3033ba257826e44d338f83c/pg19-test.arrow')
     
     # task dataset 
     train_path = os.path.join(args.babi_path, f"{args.task_dataset}_train.txt")
@@ -196,13 +202,14 @@ if __name__ == '__main__':
         # do not sample sentences longer than task position range * 0.5
         max_sentence_len = int((args.task_end_pct - args.task_start_pct) * 0.5 * args.sample_size)
         
-    noise_sampler_train = SentenceSampler(noise_dataset['train'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=None)
-    noise_sampler_test = SentenceSampler(noise_dataset['test'], tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
+    noise_sampler_train = SentenceSampler(noise_dataset_train, tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=None)
+    noise_sampler_test = SentenceSampler(noise_dataset_test, tokenizer=tokenizer, max_sentence_len=max_sentence_len, shuffle=True, random_seed=42)
 
     train_dataset = NoiseInjectionDataset(task_dataset=task_dataset_train,
                                             noise_sampler=noise_sampler_train,
                                             tokenizer=tokenizer,
                                             sample_size=train_sample_size,
+                                            mixed_length_ratio=args.mixed_length_ratio,
                                             task_start_pct=args.task_start_pct,
                                             task_end_pct=args.task_end_pct
                                             )
@@ -211,6 +218,7 @@ if __name__ == '__main__':
                                             noise_sampler=noise_sampler_test,
                                             tokenizer=tokenizer,
                                             sample_size=test_sample_size,
+                                            mixed_length_ratio=args.mixed_length_ratio,
                                             task_start_pct=args.task_start_pct,
                                             task_end_pct=args.task_end_pct
                                             )
