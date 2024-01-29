@@ -377,14 +377,8 @@ if __name__ == '__main__':
     def keep_for_metrics_fn(batch, output):
         # select data from batch and model output that would be used to compute metrics
         data = {}
-        # data['labels'] = batch['labels']
         data['loss'] = output['loss']
-        # data['target_text'] = batch['target_text']
-        # if 'logits' in output:
-        #     data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
-        #     data['predicted_labels'] = [p[m] for p, m in zip(data['predictions'], batch['labels_mask'])]
         if 'generation_outputs' in output:
-            # data['generation_outputs'] = output['generation_outputs']
             generation_outputs = tokenizer.batch_decode(output['generation_outputs'][:, 1:], add_special_tokens=False)
 
             for i, o in enumerate(generation_outputs):
@@ -400,7 +394,7 @@ if __name__ == '__main__':
             num_total = len(generation_outputs)
             data['num_correct'] = [num_correct]            
             data['num_total'] = [num_total]
-            print(f"num_correct: {num_correct}, num_total: {num_total}")        
+            # print(f"num_correct: {num_correct}, num_total: {num_total}")        
             
         return data
 
