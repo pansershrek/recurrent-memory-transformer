@@ -4,19 +4,16 @@ import os
 import math
 import random
 import shutil
-from argparse import Namespace
 from pathlib import Path
 from itertools import chain
 
 # from dotenv import load_dotenv
 import torch
 import numpy as np
+import accelerate
 from torch.utils.data import DataLoader
-import transformers
 import datasets
 from datasets import Dataset, load_dataset, load_from_disk
-
-import accelerate
 
 from lm_experiments_tools import Trainer, TrainerArgs
 
@@ -84,9 +81,6 @@ parser.add_argument('--model_type', type=str, default='encoder-decoder',
                     help='model type, encoder, encoder-decoder, decoder, affects preprocessing '
                          '(default: encoder-decoder)')
 
-# if validate_only, load arguments from experiment's config.json
-parser.add_argument('--experiment_cfg', type=str, help='path experiment config.json (to get model_cfg, model_cls)')
-
 # Babilong parameters
 parser.add_argument('--sample_size', type=int, default=None, help='max number of tokens in sample')
 parser.add_argument('--max_n_facts', type=int, default=None, help='drop samples with higher number of facts')
@@ -97,8 +91,6 @@ parser.add_argument('--task_end_pct', type=float, default=None, help='right bord
 # RMT args 
 parser.add_argument('--segment_size', type=int, default=None, help='maximal input size of the backbone model')
 parser.add_argument('--num_mem_tokens', type=int, default=None, help='number of memory tokens.')
-parser.add_argument('--num_read_mem_tokens', type=int, default=None, help='number of read memory tokens.')
-parser.add_argument('--num_write_mem_tokens', type=int, default=None, help='number of write memory tokens.')
 parser.add_argument('--max_n_segments', type=int, default=1, help='maximal segment number')
 parser.add_argument('--vary_n_segments', action='store_true', default=False, help='randomly sample input size for each batch')
 parser.add_argument('--mixed_length_ratio', type=float, default=0.0, help='used for mixed length curriculum. '
@@ -109,7 +101,6 @@ parser.add_argument('--k2', type=int, default=-1, help='number of last segments 
 parser.add_argument('--freeze_model_weights', action='store_true', default=False,
                     help='Stop training all model weights except memory layers')
 parser.add_argument('--backbone_cpt', type=str, default=None, help='backbone model checkpoint path')
-parser.add_argument('--retrieve_mode', type=str, default=None, help='retrieval mode: attention, top_1')
 
 # tokenizer
 # todo: add wordpiece tokenizers support?
@@ -150,32 +141,12 @@ if __name__ == '__main__':
     args.working_dir = str(Path(args.working_dir).expanduser().absolute())
     os.chdir(args.working_dir)
 
-    if args.validate_only:
-        # load all args from experiment config, except:
-        # segment_size, sample_size, max_n_segments, batch_size, gradient_accumulation_steps
-        # task_dataset, noise_dataset, babi_path, noise_dataset_split
-        # get unset args from experiment config
-        excepted_args = {'segment_size', 'sample_size', 'max_n_segments', 'batch_size', 'gradient_accumulation_steps',
-                         'task_dataset', 'noise_dataset', 'babi_path', 'noise_dataset_split',
-                         'init_checkpoint', 'validate_only', 'experiment_cfg'}
-        if args.experiment_cfg:
-            exp_cfg = json.load(open(args.experiment_cfg, 'r'))
-            args = vars(args)
-            for k in exp_cfg:
-                if k in args and k not in excepted_args:
-                    args[k] = exp_cfg[k]
-            args = Namespace(**args)
-            args.model_path = None
-            args.lr_scheduler = None
-            args.reset_iteration = False
-
     accelerator = accelerate.Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
     from accelerate.logging import get_logger
     logger = get_logger('')
 
     logger.info(f'num processes: {accelerator.num_processes}')
     logger.info(f'mixed precision: {accelerator.mixed_precision}')
-    logger.info(f'accelerator state: {accelerator.state}')
 
     if args.model_path is None:
         logger.warning('model_path is not set: config, logs and checkpoints will not be saved.')
@@ -191,7 +162,6 @@ if __name__ == '__main__':
     #     json.dump(args_dict, open(model_path/'config.json', 'w'), indent=4)
     #     open(model_path / 'git.diff', 'w').write(get_git_diff())
 
-    # create model path, save configuration, setups logging and saves current git diff
     prepare_run(args, logger, logger_fmt)
 
     if not args.from_pretrained:
@@ -201,7 +171,6 @@ if __name__ == '__main__':
 
     # Prepare datasets
     logger.info(f'preparing dataset for {args.task_dataset}')
-
     try:
         noise_dataset = datasets.load_dataset(args.noise_dataset, args.noise_dataset_split)
         noise_dataset_train = noise_dataset['train']
@@ -253,7 +222,7 @@ if __name__ == '__main__':
                                             task_start_pct=args.task_start_pct,
                                             task_end_pct=args.task_end_pct
                                             )
-
+    
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     gen_token = tokenizer.encode('GEN')[0]
     eos_token = tokenizer.eos_token_id
@@ -329,16 +298,17 @@ if __name__ == '__main__':
 
     if args.use_lora:
         peft_config = LoraConfig(
-            task_type=TaskType.CAUSAL_LM,
-            inference_mode=False,
-            r=args.lora_attn_dim,
-            lora_alpha=args.lora_attn_alpha,
+            task_type=TaskType.CAUSAL_LM, 
+            inference_mode=False, 
+            r=args.lora_attn_dim, 
+            lora_alpha=args.lora_attn_alpha, 
             lora_dropout=args.lora_dropout,
             layers_pattern=args.layers_pattern
             )
         model = get_peft_model(model, peft_config)
         logger.info(f'Added LoRA, trainable parameters with LoRA only:')
         model.print_trainable_parameters()
+    
 
     ## load cpt of backbone model
     if args.backbone_cpt:
@@ -349,25 +319,25 @@ if __name__ == '__main__':
         logger.info(f'Loaded baseline state dict from: {args.backbone_cpt}')
 
     # Pass memory settings to pretrained model
-    if args.num_mem_tokens is not None or args.num_read_mem_tokens is not None or args.num_write_mem_tokens is not None:
+    if args.num_mem_tokens is not None:
         memory_cell_cls = get_cls_by_name(args.memory_cell_cls)
         recurrent_wrapper_cls = get_cls_by_name(args.recurrent_wrapper_cls)
         logger.info(f'Wrapping in: {memory_cell_cls} and {recurrent_wrapper_cls}')
-
-        cell = memory_cell_cls(model, args.num_mem_tokens, args.num_read_mem_tokens, args.num_write_mem_tokens)
+        
+        cell = memory_cell_cls(model, args.num_mem_tokens)
         if args.segment_alignment not in {None, 'left'}:
             logger.info(f"Using custom segment alignment: {args.segment_alignment}")
-
+        
         max_n_segments = args.max_n_segments
         if max_n_segments in {-1, None}:
             max_n_segments = np.ceil(args.sample_size / args.segment_size)
-        model = recurrent_wrapper_cls(cell,
+        model = recurrent_wrapper_cls(cell, 
                                       segment_size=args.segment_size,
                                       max_n_segments=max_n_segments, 
                                       segment_alignment=args.segment_alignment,
                                       k2=args.k2,
-                                      retrieve_mode=args.retrieve_mode,
         )
+                                    
 
         ## load cpt of rmt
         if args.model_cpt:
@@ -400,25 +370,28 @@ if __name__ == '__main__':
     logger.info(f'Using optimizer class: {optimizer_cls}')
 
     # todo: group optimizer params
-    if args.validate_only:
-        # to save gpu ram
-        optimizer = None
-    else:
-        optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optimizer_cls(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)    
     # if args.model_cpt or args.backbone_cpt:
     #     optimizer.load_state_dict(cpt['optimizer_state_dict'])
 
     def keep_for_metrics_fn(batch, output):
         # select data from batch and model output that would be used to compute metrics
         data = {}
-        data['labels'] = batch['labels']
         data['loss'] = output['loss']
-        data['target_text'] = batch['target_text']
-        if 'logits' in output:
-            data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
-            data['predicted_labels'] = [p[m] for p, m in zip(data['predictions'], batch['labels_mask'])]
         if 'generation_outputs' in output:
-            data['generation_outputs'] = output['generation_outputs']
+            generation_outputs = tokenizer.batch_decode(output['generation_outputs'][:, 1:], add_special_tokens=False)
+
+            for i, o in enumerate(generation_outputs):
+                if '<|endoftext|>' in o:
+                    generation_outputs[i] = o.split('<|endoftext|>')[0].strip()
+            
+
+            num_correct = np.sum([text == pred for text, pred in zip (batch['target_text'], generation_outputs)])
+            num_total = len(generation_outputs)
+            data['num_correct'] = [num_correct]            
+            data['num_total'] = [num_total]
+            # print(f"num_correct: {num_correct}, num_total: {num_total}")        
+            
         return data
 
     # HF datasets can compute metrics on each gpu process and then aggregate them on process with rank 0
@@ -433,46 +406,21 @@ if __name__ == '__main__':
     # - compute metrics on batch lvl
     # - add support of HF metrics and turn off aggregation in case if metric has .add_batch method
     # scrolls_metric = datasets.load_metric(scrolls_metric_path, args.task_name, keep_in_memory=True)
-    if optimizer is not None:
-        model, optimizer = accelerator.prepare(model, optimizer)
-    else:
-        model = accelerator.prepare(model)
+
+    model, optimizer = accelerator.prepare(model, optimizer)
     # model, optimizer, _ = accelerator.prepare(model, optimizer, train_dataloader)
 
     def metrics_fn(data):
         # compute metrics based on stored labels, predictions, ...
         metrics = {}
-        if 'generation_outputs' in data:
-            generation_outputs = tokenizer.batch_decode([d for d in data['generation_outputs']], add_special_tokens=False)
-            for i, o in enumerate(generation_outputs):
-                if '<|endoftext|>' in o:
-                    # print(f"gt: {data['target_text'][i]}, generated {o}")
-                    generation_outputs[i] = o.split('<|endoftext|>')[1].strip()
-
-            metrics['exact_match'] = np.mean([text == pred for text, pred in zip (data['target_text'], generation_outputs)])
-
-        elif 'predictions' in data:
-            y, p = data['labels'], data['predictions']
-            predicted_labels = tokenizer.batch_decode(data['predicted_labels'], add_special_tokens=False)
-            for i, l in enumerate(predicted_labels):
-                if '<|endoftext|>' in l:
-                    eos_ind = predicted_labels[i].index('<|endoftext|>')
-                    predicted_labels[i] = predicted_labels[i][:eos_ind]
-            metrics['exact_match'] = np.mean([text == pred for text, pred in zip(data['target_text'], predicted_labels)])
-            if args.show_valid_examples > 0 and accelerator.is_main_process:
-                for i in range(min(args.show_valid_examples, len(y))):
-                    logger.info(f'y: {y[i][-50:]}')
-                    logger.info(f'p: {p[i][-50:]}')
-
-                    logger.info(f"y_text: {data['target_text'][i]}")
-                    logger.info(f"p_text: {predicted_labels[i]}")
-
-                    logger.info('-' * 50)
+        if 'num_correct' in data:
+            metrics['exact_match'] = np.sum(data['num_correct']) / np.sum(data['num_total'])
         try:
             perplexity = math.exp(data["loss"].mean())
         except OverflowError:
             perplexity = float("inf")
         metrics["perplexity"] = perplexity
+
         return metrics
 
     ### booydar
@@ -513,6 +461,4 @@ if __name__ == '__main__':
         #     trainer.validate(valid_dataloader, write_tb=True, split='valid')
         if test_dataloader is not None:
             logger.info('Runnning validation on test data:')
-            trainer.validate(test_dataloader, write_tb=False,
-                             split=f'test_{args.sample_size}_{args.max_n_segments}x{args.segment_size}')
-            trainer.save_metrics(save_path=Path(args.experiment_cfg).parent)
+            trainer.validate(test_dataloader, write_tb=True, split='test')
