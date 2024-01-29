@@ -27,28 +27,32 @@ class MemoryCell(torch.nn.Module):
         if memory_state is None:
             memory_state = self.set_memory(input_ids.shape)
 
-        seg_kwargs = self.process_input(input_ids, memory_state, **kwargs)
+        seg_kwargs = self.process_input(input_ids, memory_state, write_mem=True, **kwargs)
         out = self.model(**seg_kwargs)
         out, new_memory_state = self.process_output(out, **kwargs)
 
         return out, new_memory_state
     
-    def generate(self, input_ids, memory_state, attention_mask, **generate_kwargs):
+    def generate(self, input_ids, memory_state, attention_mask=None, **generate_kwargs):
         if memory_state is None:
             memory_state = self.set_memory(input_ids.shape)
 
-        seg_kwargs = self.process_input(input_ids, memory_state, attention_mask=attention_mask)
+        seg_kwargs = self.process_input(input_ids, memory_state, attention_mask=attention_mask, write_mem=False)
         out = self.model.generate(inputs_embeds=seg_kwargs['inputs_embeds'], attention_mask=seg_kwargs['attention_mask'], **generate_kwargs)
         return out
 
-    def process_input(self, input_ids, memory_state, **kwargs):
+    def process_input(self, input_ids, memory_state, write_mem, **kwargs):
         seg_kwargs = dict(**kwargs)
 
         inputs_embeds = kwargs.get('inputs_embeds')
         if inputs_embeds is None:
             inputs_embeds = self.model.get_input_embeddings()(input_ids)
+        
         if self.num_mem_tokens > 0:
-            inputs_embeds = torch.cat([memory_state, inputs_embeds, memory_state], dim=1)
+            if write_mem:
+                inputs_embeds = torch.cat([memory_state, inputs_embeds, memory_state], dim=1)
+            else:
+                inputs_embeds = torch.cat([memory_state, inputs_embeds], dim=1)
 
         seg_kwargs['input_ids'] = None
         seg_kwargs['inputs_embeds'] = inputs_embeds
@@ -62,7 +66,7 @@ class MemoryCell(torch.nn.Module):
             return attention_mask
         else:
             mask = torch.ones(*shape[:2], dtype=torch.int64).to(attention_mask.device)
-            mask[:, self.num_mem_tokens:-self.num_mem_tokens] = attention_mask
+            mask[:, self.num_mem_tokens: self.num_mem_tokens + attention_mask.shape[1]] = attention_mask
             return mask
     
     def process_output(self, model_outputs, **kwargs):
