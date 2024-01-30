@@ -384,13 +384,22 @@ if __name__ == '__main__':
             for i, o in enumerate(generation_outputs):
                 if '<|endoftext|>' in o:
                     generation_outputs[i] = o.split('<|endoftext|>')[0].strip()
-            
 
             num_correct = np.sum([text == pred for text, pred in zip (batch['target_text'], generation_outputs)])
             num_total = len(generation_outputs)
             data['num_correct'] = [num_correct]            
             data['num_total'] = [num_total]
-            # print(f"num_correct: {num_correct}, num_total: {num_total}")        
+        elif 'logits' in output:
+            data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
+            predicted_labels = [p[m[-len(p):]] for p, m in zip(data['predictions'], batch['labels_mask'])]
+            predicted_labels = tokenizer.batch_decode(predicted_labels, add_special_tokens=False)
+            for i, l in enumerate(predicted_labels):
+                if '<|endoftext|>' in l:
+                    eos_ind = predicted_labels[i].index('<|endoftext|>')
+                    predicted_labels[i] = predicted_labels[i][:eos_ind]
+
+            data['num_correct'] = [np.sum([text == pred for text, pred in zip (batch['target_text'], predicted_labels)])]
+            data['num_total'] = [len(predicted_labels)]
             
         return data
 
