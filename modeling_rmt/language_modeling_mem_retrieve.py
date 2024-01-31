@@ -271,7 +271,6 @@ class RecurrentWrapper(torch.nn.Module):
         return memory_state
 
 
-from modeling_rmt.language_modeling import RecurrentWrapper
 class RecurrentWrapperLight(RecurrentWrapper):    
     def forward(self, input_ids, labels=None, labels_mask=None, inputs_embeds=None, attention_mask=None, output_attentions=None, output_hidden_states=None):
         memory_state = None

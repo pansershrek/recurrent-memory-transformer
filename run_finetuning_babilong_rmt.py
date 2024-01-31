@@ -157,7 +157,7 @@ if __name__ == '__main__':
         # get unset args from experiment config
         excepted_args = {'segment_size', 'sample_size', 'max_n_segments', 'batch_size', 'gradient_accumulation_steps',
                          'task_dataset', 'noise_dataset', 'babi_path', 'noise_dataset_split',
-                         'init_checkpoint', 'validate_only', 'experiment_cfg'}
+                         'init_checkpoint', 'validate_only', 'experiment_cfg', 'recurrent_wrapper_cls'}
         if args.experiment_cfg:
             exp_cfg = json.load(open(args.experiment_cfg, 'r'))
             args = vars(args)
@@ -421,6 +421,38 @@ if __name__ == '__main__':
             data['generation_outputs'] = output['generation_outputs']
         return data
 
+    if args.validate_only:
+        def keep_for_metrics_fn(batch, output):
+            # select data from batch and model output that would be used to compute metrics
+            data = {}
+            data['loss'] = output['loss']
+            if 'generation_outputs' in output:
+                generation_outputs = tokenizer.batch_decode(output['generation_outputs'][:, 1:], add_special_tokens=False)
+
+                for i, o in enumerate(generation_outputs):
+                    if '<|endoftext|>' in o:
+                        generation_outputs[i] = o.split('<|endoftext|>')[0].strip()
+
+                num_correct = np.sum([text == pred for text, pred in zip (batch['target_text'], generation_outputs)])
+                num_total = len(generation_outputs)
+                data['num_correct'] = [num_correct]
+                data['num_total'] = [num_total]
+            elif 'logits' in output:
+                data['predictions'] = torch.argmax(output['logits'].detach(), dim=-1)
+                predicted_labels = [p[m[-len(p):]] for p, m in zip(data['predictions'], batch['labels_mask'])]
+                predicted_labels = tokenizer.batch_decode(predicted_labels, add_special_tokens=False)
+                for i, l in enumerate(predicted_labels):
+                    if '<|endoftext|>' in l:
+                        eos_ind = predicted_labels[i].index('<|endoftext|>')
+                        predicted_labels[i] = predicted_labels[i][:eos_ind]
+
+                data['num_correct'] = [np.sum([text == pred for text, pred in zip (batch['target_text'], predicted_labels)])]
+                data['num_total'] = [len(predicted_labels)]
+
+            return data
+
+
+
     # HF datasets can compute metrics on each gpu process and then aggregate them on process with rank 0
     # synchronization is done by using temporay files on a shared filesystem
     # rank and number of workers is set by num_process and process_id params
@@ -474,6 +506,23 @@ if __name__ == '__main__':
             perplexity = float("inf")
         metrics["perplexity"] = perplexity
         return metrics
+
+    if args.validate_only:
+        def metrics_fn(data):
+            # compute metrics based on stored labels, predictions, ...
+            metrics = {}
+            if 'num_correct' in data:
+                metrics['exact_match'] = np.sum(data['num_correct']) / np.sum(data['num_total'])
+            try:
+                perplexity = math.exp(data["loss"].mean())
+            except OverflowError:
+                perplexity = float("inf")
+            metrics["perplexity"] = perplexity
+
+            return metrics
+
+
+
 
     ### booydar
     batch_metrics_fn = lambda _, y: {key: y[key] for key in y.keys() if (('loss' in key) or ('!log' in key))}
