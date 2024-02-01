@@ -92,6 +92,7 @@ parser.add_argument('--sample_size', type=int, default=None, help='max number of
 parser.add_argument('--max_n_facts', type=int, default=None, help='drop samples with higher number of facts')
 parser.add_argument('--task_start_pct', type=float, default=None, help='left border of facts in sample, between 0 and 1')
 parser.add_argument('--task_end_pct', type=float, default=None, help='right border of facts in sample, between task_start_pct and 1')
+parser.add_argument('--max_n_valid_samples', type=int, default=None, help='how many samples take from valid set')
 
 
 # RMT args 
@@ -157,7 +158,8 @@ if __name__ == '__main__':
         # get unset args from experiment config
         excepted_args = {'segment_size', 'sample_size', 'max_n_segments', 'batch_size', 'gradient_accumulation_steps',
                          'task_dataset', 'noise_dataset', 'babi_path', 'noise_dataset_split',
-                         'init_checkpoint', 'validate_only', 'experiment_cfg', 'recurrent_wrapper_cls'}
+                         'init_checkpoint', 'validate_only', 'experiment_cfg', 'recurrent_wrapper_cls',
+                         'max_n_valid_samples'}
         if args.experiment_cfg:
             exp_cfg = json.load(open(args.experiment_cfg, 'r'))
             args = vars(args)
@@ -215,7 +217,7 @@ if __name__ == '__main__':
     test_path = os.path.join(args.babi_path, f"{args.task_dataset}_test.txt")
 
     task_dataset_train = TaskDataset(train_path, max_n_facts=args.max_n_facts)
-    task_dataset_test = TaskDataset(test_path, max_n_facts=args.max_n_facts)
+    task_dataset_test = TaskDataset(test_path, max_n_facts=args.max_n_facts, max_n_samples=args.max_n_valid_samples)
 
     # background text
     qa_margin = 20          # leave space for questions and answers

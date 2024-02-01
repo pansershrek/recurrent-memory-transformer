@@ -54,8 +54,10 @@ def get_dataset_df(dataset_path, max_n_facts=None):
 
 # babi task loader dataset
 class TaskDataset(Dataset):
-    def __init__(self, dataset_path, max_n_facts=None):
+    def __init__(self, dataset_path, max_n_facts=None, max_n_samples=None):
         self.fact_dataset = get_dataset_df(dataset_path, max_n_facts=max_n_facts)
+        if max_n_samples is not None:
+            self.fact_dataset = self.fact_dataset[self.fact_dataset['sample_num'] < max_n_samples]
 
     def __getitem__(self, ind):
         slc = self.fact_dataset[self.fact_dataset.sample_num == ind]
