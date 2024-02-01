@@ -5,7 +5,7 @@ import nltk
 from torch.utils.data import Dataset
 
 # preprocess babi text files
-def get_dataset_df(dataset_path, max_n_facts=None):
+def get_dataset_df(dataset_path, max_n_facts=None, max_n_samples=None):
     with open(dataset_path, 'r') as f:
         texts = f.read().strip()
         texts = texts.split('\n')
@@ -40,6 +40,8 @@ def get_dataset_df(dataset_path, max_n_facts=None):
             slices = [slc for slc in slices if slc.shape[0] <= max_n_facts]
         single_question_slices += slices
     
+    if max_n_samples is not None:
+        single_question_slices = single_question_slices[:max_n_samples]
     df = pd.concat(single_question_slices).reset_index(drop=True)
 
     # mark each sample again
@@ -54,8 +56,8 @@ def get_dataset_df(dataset_path, max_n_facts=None):
 
 # babi task loader dataset
 class TaskDataset(Dataset):
-    def __init__(self, dataset_path, max_n_facts=None):
-        self.fact_dataset = get_dataset_df(dataset_path, max_n_facts=max_n_facts)
+    def __init__(self, dataset_path, max_n_facts=None, max_n_samples=None):
+        self.fact_dataset = get_dataset_df(dataset_path, max_n_facts=max_n_facts, max_n_samples=max_n_samples)
 
     def __getitem__(self, ind):
         slc = self.fact_dataset[self.fact_dataset.sample_num == ind]
