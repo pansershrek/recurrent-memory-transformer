@@ -92,13 +92,13 @@ def parse_to_df(path, target_cols, metric_names, silent=SILENT):
 
 # babilong new 
 paths = [
-        '/home/bulatov/runs/babilong/',
+        '/home/jovyan/rmt/runs/babilong/',
         ]
 
 paths = [Path(p) for p in paths]
 metric_names = ['exact_match']
-new_cols = ['input_size', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad']#, 'noise_n_segments']
-target_cols = TGT_COLS + ['best_valid_exact_match', 'exact_match'] + new_cols
+new_cols = ['input_size', 'k1', 'k2', 'freeze_model_weights', 'use_truncated_backward', 'retain_grad', 'task_name']#, 'noise_n_segments']
+target_cols = TGT_COLS + ['exact_match'] + new_cols
 out_path = 'results/babilong_new.csv'
 
 dfs = [parse_to_df(p, target_cols, metric_names) for p in paths]

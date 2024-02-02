@@ -169,8 +169,8 @@ class NoiseInjectionDataset(Dataset):
     def __getitem__(self, ind):
         sample = self.task_dataset[ind]
         facts_tok = self.tokenizer(list(sample['facts']))['input_ids']
-        question_tok = self.tokenizer(sample['question'])['input_ids']
-        answer_tok = self.tokenizer(sample['answer'])['input_ids']
+        sample['question_tokens'] = self.tokenizer(sample['question'])['input_ids']
+        sample['target_tokens'] = self.tokenizer(sample['answer'])['input_ids']
 
         sample_size = self.get_sample_size()
         task_len = sum_lengths(facts_tok)
@@ -211,9 +211,6 @@ class NoiseInjectionDataset(Dataset):
         tokens = [i for s in flat for i in s]
 
         sample['input_tokens'] = tokens
-        sample['question_tokens'] = question_tok
-        sample['target_tokens'] = answer_tok
-
         return sample
     
     def __len__(self):

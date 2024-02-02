@@ -4,6 +4,8 @@
 # .nfs*
 # results
 # notebooks
+data/
+accel_configs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

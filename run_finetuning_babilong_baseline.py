@@ -225,18 +225,48 @@ if __name__ == '__main__':
                                             )
     
     id_pad_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-    gen_token = tokenizer.encode('GEN')[0]
+    q_start_tokens = tokenizer.encode('\nQuestion: ')
+    a_start_tokens = tokenizer.encode('Answer: ')
     eos_token = tokenizer.eos_token_id
 
+    prompt = '''I will give you context with the facts about positions of different persons
+    hidden in some random text and a question. You need to answer the
+    question based only on the information from the facts. If a person was
+    in different locations, use the latest location to answer the question.
+    Always end your answer with the most recent location of ’person’ is
+    ’location’. Do not write anything else after that.
+    <example>
+    Charlie went to the hallway.
+    Judith come back to the kitchen.
+    Charlie travelled to balcony.
+    Where is Charlie?
+    Answer: balcony
+    </example>
+    <example>
+    Alan moved to the garage.
+    Charlie went to the beach.
+    Alan went to the shop.
+    Rouse travelled to balcony.
+    Where is Alan?
+    Answer: shop
+    </example>
+    <context>
+    qa1_query_with_noise
+    </context>
+    QUESTION: qa1_question
+    Always end your answer with the most recent location of ’person’ is
+    ’location’. Do not write anything else after that.'''
+
+    prompt_tok = tokenizer.encode(prompt)
     def collate_fn(batch):
         targets = [torch.tensor(b['target_tokens']) for b in batch]
-        input_ids = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token] + b['target_tokens'] + [eos_token]) for b in batch]
-        gen_inputs = [torch.tensor(b['input_tokens'] + b['question_tokens'] + [gen_token]) for b in batch]
+        input_ids = [ torch.tensor(prompt_tok + b['input_tokens'] + q_start_tokens + b['question_tokens'] + a_start_tokens + b['target_tokens']) for b in batch]
+        gen_inputs = [ torch.tensor(prompt_tok +b['input_tokens'] + q_start_tokens + b['question_tokens'] + a_start_tokens) for b in batch]
 
         attention_mask = [torch.ones_like(b, dtype=int) for b in input_ids]
         labels_mask = [torch.zeros_like(b, dtype=bool) for b in input_ids]
         for m, t in zip(labels_mask, targets):
-            m[-len(t) - 2:] = True
+            m[-len(t):] = True
 
         input_ids = pad_sequence(input_ids, padding_value=id_pad_value, batch_first=True)
         gen_inputs = pad_sequence(gen_inputs, padding_value=id_pad_value, batch_first=True)
