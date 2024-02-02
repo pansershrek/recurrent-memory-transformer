@@ -10,15 +10,15 @@ MODEL_TYPE=decoder
 MEMORY_CELL=modeling_rmt.language_modeling_mem_retrieve:MemoryCell
 RECURRENT_WRAPPER=modeling_rmt.language_modeling_mem_retrieve:RecurrentWrapper
 BACKBONE_CLS=transformers:AutoModelForCausalLM
-TASK_DATASET=qa1_single-supporting-fact
+TASK_DATASET=qa3_three-supporting-facts
 NOISE_DATASET=pg19
 METRIC=exact_match
 
 MODEL_NAME=gpt2  # backbone model
 SEGMENT_SIZE=512 # size of one segment in tokens
-SAMPLE_SIZE=1024 # length of task sample in tokens
+SAMPLE_SIZE=2048 # length of task sample in tokens
 MEMORY_SIZE=16
-MAX_N_SEGMENTS=2
+MAX_N_SEGMENTS=4
 
 SAMPLING_PROB=0.5
 
@@ -26,41 +26,63 @@ RETR_MODE='attention'
 
 ITERS=10000
 TBS=64
-BS=16
+BS=1
 
-GRAD_ACC_STEPS=$(($TBS/($BS*$NP)))
 SCHEDULER=linear
 LR=1e-04
 WD=1e-03
 
-for LR in 5e-05
-do
+# -> prepare checkpoint trained on 1 segm
+MAX_N_SEGMENTSS=(0 2 4 6 8 16 32)
+BSS=(8 8 8 4 4 2 1)
 
-for N in 3 4
+for N in 1
 do
-for MEMORY_SIZE in 16
+for MEMORY_SIZE in 16 # 16 32
 do
+for LR in 3e-05
+do
+for (( j=2; j<${#MAX_N_SEGMENTSS[@]}; j++ ))
+do
+BS=${BSS[j]}
+MAX_N_SEGMENTS=${MAX_N_SEGMENTSS[j]}
+
+j1=$((j-1))
+SRC_N_SEGMENTS=${MAX_N_SEGMENTSS[j1]}
+
+j2=$((j-2))
+SRC_SRC_N_SEGMENTS=${MAX_N_SEGMENTSS[j2]}
+
 for x_READ_MEM in 2
 do
 READ_MEM_SIZE=$((MEMORY_SIZE*x_READ_MEM))
 WRITE_MEM_SIZE=$MEMORY_SIZE
 
+SAMPLE_SIZE=$((MAX_N_SEGMENTS*SEGMENT_SIZE)) # length of task sample in tokens
+PREV_SAMPLE_SIZE=$((SRC_N_SEGMENTS*SEGMENT_SIZE))
+
 K2=-1   # BPTT unroll length
 
 ACCEL_CONFIG=./accelerate.yaml
+GRAD_ACC_STEPS=$(($TBS/($BS*$NP)))
+MAX_N_FACTS=$((SAMPLE_SIZE/10))
+
+MODEL_PATH=./runs/babilong/${TASK_DATASET}/${NOISE_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd${WD}_seqlen${SAMPLE_SIZE}_${MAX_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_r${READ_MEM_SIZE}_w${WRITE_MEM_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_retr_${RETR_MODE}_from_${SRC_N_SEGMENTS}x${SEGMENT_SIZE}/run_$N
+INIT_MODEL_PATH=./runs/babilong/${TASK_DATASET}/${NOISE_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd${WD}_seqlen${PREV_SAMPLE_SIZE}_${SRC_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_r${READ_MEM_SIZE}_w${WRITE_MEM_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_retr_${RETR_MODE}_from_${SRC_SRC_N_SEGMENTS}x${SEGMENT_SIZE}/run_$N
 
 echo RUNNING: TASK_DATASET $TASK_DATASET MEMORY_SIZE $MEMORY_SIZE SEGMENT_SIZE $SEGMENT_SIZE 
 echo SAMPLE_SIZE $SAMPLE_SIZE MODEL_NAME $MODEL_NAME LR $LR N $N
 echo gradient accumulation steps $GRAD_ACC_STEPS
+echo $MODEL_PATH
+echo from $INIT_MODEL_PATH
 
-#--init_checkpoint ./runs/babilong/qa1_single-supporting-fact/pg19/gpt2/lr1e-04_linear_adamw_wd1e-03_seqlen512_2x256_mem32_r64_w32_bs64__bptt--1_sp_retr_attention/run_1/model_best/pytorch_model.bin \
-#--reset_iteration \
-
-accelerate launch --num_processes $NP --main_process_port 29216 --config_file $ACCEL_CONFIG run_finetuning_babilong_rmt.py \
+accelerate launch --num_processes $NP --main_process_port 29327 --config_file $ACCEL_CONFIG run_finetuning_babilong_rmt.py \
         --task_dataset $TASK_DATASET \
         --noise_dataset $NOISE_DATASET \
         --babi_path /home/jovyan/rmt/datasets/babi/data/tasks_1-20_v1-2/en-10k/ \
-	--model_path ./runs/babilong/${TASK_DATASET}/${NOISE_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd${WD}_seqlen${SAMPLE_SIZE}_${MAX_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_r${READ_MEM_SIZE}_w${WRITE_MEM_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_retr_${RETR_MODE}_from_0x${SEGMENT_SIZE}/run_$N \
+        --model_path $MODEL_PATH \
+        --init_checkpoint ${INIT_MODEL_PATH}/model_best/pytorch_model.bin \
+        --reset_iteration \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
@@ -68,6 +90,7 @@ accelerate launch --num_processes $NP --main_process_port 29216 --config_file $A
         --model_cls $BACKBONE_CLS \
         --segment_size $SEGMENT_SIZE \
         --sample_size $SAMPLE_SIZE \
+        --max_n_facts $MAX_N_FACTS \
         --vary_n_segments --mixed_length_ratio $SAMPLING_PROB \
         --num_read_mem_tokens $READ_MEM_SIZE \
         --num_write_mem_tokens $WRITE_MEM_SIZE \
@@ -79,9 +102,9 @@ accelerate launch --num_processes $NP --main_process_port 29216 --config_file $A
         --save_best \
         --k2 $K2 \
         --optimizer AdamW  --weight_decay $WD \
-        --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
+        --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/20)) \
         --data_n_workers 2 \
-        --log_interval 100 --valid_interval 100 \
+        --log_interval 50 --valid_interval 50 \
         --optimize_metric $METRIC --optimize_mode max --save_best \
         --show_valid_examples 1 \
         --early_stopping_patience 15 \
@@ -91,5 +114,5 @@ done
 done
 done
 done
+done
 echo "done"
-

@@ -10,7 +10,7 @@ MODEL_TYPE=decoder
 MEMORY_CELL=modeling_rmt.language_modeling_mem_retrieve:MemoryCell
 RECURRENT_WRAPPER=modeling_rmt.language_modeling_mem_retrieve:RecurrentWrapper
 BACKBONE_CLS=transformers:AutoModelForCausalLM
-TASK_DATASET=qa1_single-supporting-fact
+TASK_DATASET=qa2_two-supporting-facts
 NOISE_DATASET=pg19
 METRIC=exact_match
 
@@ -36,7 +36,7 @@ WD=1e-03
 for LR in 5e-05
 do
 
-for N in 3 4
+for N in 1 2
 do
 for MEMORY_SIZE in 16
 do

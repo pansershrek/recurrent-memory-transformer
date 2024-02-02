@@ -10,7 +10,7 @@ MODEL_TYPE=decoder
 MEMORY_CELL=modeling_rmt.language_modeling_mem_retrieve:MemoryCell
 RECURRENT_WRAPPER=modeling_rmt.language_modeling_mem_retrieve:RecurrentWrapper
 BACKBONE_CLS=transformers:AutoModelForCausalLM
-TASK_DATASET=qa1_single-supporting-fact
+TASK_DATASET=qa5_three-arg-relations
 NOISE_DATASET=pg19
 METRIC=exact_match
 
@@ -28,7 +28,6 @@ ITERS=10000
 TBS=64
 BS=16
 
-GRAD_ACC_STEPS=$(($TBS/($BS*$NP)))
 SCHEDULER=linear
 LR=1e-04
 WD=1e-03
@@ -36,7 +35,7 @@ WD=1e-03
 for LR in 5e-05
 do
 
-for N in 3 4
+for N in 1 2
 do
 for MEMORY_SIZE in 16
 do
@@ -48,6 +47,7 @@ WRITE_MEM_SIZE=$MEMORY_SIZE
 K2=-1   # BPTT unroll length
 
 ACCEL_CONFIG=./accelerate.yaml
+GRAD_ACC_STEPS=$(($TBS/($BS*$NP)))
 
 echo RUNNING: TASK_DATASET $TASK_DATASET MEMORY_SIZE $MEMORY_SIZE SEGMENT_SIZE $SEGMENT_SIZE 
 echo SAMPLE_SIZE $SAMPLE_SIZE MODEL_NAME $MODEL_NAME LR $LR N $N
@@ -56,7 +56,7 @@ echo gradient accumulation steps $GRAD_ACC_STEPS
 #--init_checkpoint ./runs/babilong/qa1_single-supporting-fact/pg19/gpt2/lr1e-04_linear_adamw_wd1e-03_seqlen512_2x256_mem32_r64_w32_bs64__bptt--1_sp_retr_attention/run_1/model_best/pytorch_model.bin \
 #--reset_iteration \
 
-accelerate launch --num_processes $NP --main_process_port 29216 --config_file $ACCEL_CONFIG run_finetuning_babilong_rmt.py \
+accelerate launch --num_processes $NP --main_process_port 29517 --config_file $ACCEL_CONFIG run_finetuning_babilong_rmt.py \
         --task_dataset $TASK_DATASET \
         --noise_dataset $NOISE_DATASET \
         --babi_path /home/jovyan/rmt/datasets/babi/data/tasks_1-20_v1-2/en-10k/ \
@@ -79,11 +79,10 @@ accelerate launch --num_processes $NP --main_process_port 29216 --config_file $A
         --save_best \
         --k2 $K2 \
         --optimizer AdamW  --weight_decay $WD \
-        --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/10)) \
+        --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/20)) \
         --data_n_workers 2 \
         --log_interval 100 --valid_interval 100 \
         --optimize_metric $METRIC --optimize_mode max --save_best \
-        --show_valid_examples 1 \
         --early_stopping_patience 15 \
         --seed $(($N+42)) \
         --clip_grad_norm 1.0
