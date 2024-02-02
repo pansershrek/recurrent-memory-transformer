@@ -1,15 +1,7 @@
-# Recurrent Memory Transformer implementation compatible with Hugging Face models
+# This repository contains code for reproducing the Recurrent Memory Transformer experiments with the BABILong dataset 
 
 
-RMT is a memory-augmented segment-level recurrent Transformer. It achieves state-of-the art results on Hyperpartisan dataset and beats Transformer-XL on algorithmic tasks and LM with limited input and memory size.
-
->[paper](https://arxiv.org/abs/2304.11062) Scaling Transformer to 1M tokens and beyond with RMT
-
->[paper](https://arxiv.org/abs/2207.06881) [code](https://github.com/booydar/LM-RMT) Recurrent Memory Transformer
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/booydar/t5-experiments/blob/wip/notebooks/rmt_demo_lm.ipynb) Example: LM with RMT
-
-Recurrent Memory Transformer is implemented as follows:
+RMT is a memory-augmented segment-level recurrent Transformer. 
 
 ![**RMT**](img/RMT_scheme.png?raw=True)
 
@@ -30,27 +22,22 @@ Full requirements for all experiments are specified in requirements.txt. Install
 pip install -r requirements.txt
 ```
 
+### Loading the dataset
+Dataset can be found in the `data` directory. To unpack it, run 
+```bash
+unzip data/tasks_1-20_v1-2.zip
+```
 
-## Citation
-If you find our work useful, please cite the RMT papers:
+Another option is to [download](https://huggingface.co/datasets/facebook/babi_qa) it from Hugging Face.
+
+
+### Running experiments
+For reproducing experiments please use the scripts_exp/babilong directory. Bash scripts contain hyperparameters and commands to run the experiment. 
+
+Example command:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3 NP=4 ./finetune_babilong_qa1_rmt_vary_n_seg.sh
 ```
-@inproceedings{
-        bulatov2022recurrent,
-        title={Recurrent Memory Transformer},
-        author={Aydar Bulatov and Yuri Kuratov and Mikhail Burtsev},
-        booktitle={Advances in Neural Information Processing Systems},
-        editor={Alice H. Oh and Alekh Agarwal and Danielle Belgrave and Kyunghyun Cho},
-        year={2022},
-        url={https://openreview.net/forum?id=Uynr3iPhksa}
-}
-```
-```
-@misc{bulatov2023scaling,
-      title={Scaling Transformer to 1M tokens and beyond with RMT}, 
-      author={Aydar Bulatov and Yuri Kuratov and Mikhail S. Burtsev},
-      year={2023},
-      eprint={2304.11062},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL}
-}
-```
+
+Don't forget to pass the path to your dataset folder using the `--babi_path` variable. 
