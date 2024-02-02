@@ -30,9 +30,10 @@ unzip data/tasks_1-20_v1-2.zip
 
 Another option is to [download](https://huggingface.co/datasets/facebook/babi_qa) it from Hugging Face.
 
+Dataset usage example can be found in `notebooks/babilong_usage_example.ipynb`
 
 ### Running experiments
-For reproducing experiments please use the scripts_exp/babilong directory. Bash scripts contain hyperparameters and commands to run the experiment. 
+For reproducing experiments please use the `scripts_exp/babilong directory`. Bash scripts contain hyperparameters and commands to run the experiments. 
 
 Example command:
 
