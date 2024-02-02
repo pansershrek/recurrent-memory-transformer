@@ -26,7 +26,7 @@ do
 for LR in 5e-05
 do
 
-for MAX_N_SEGMENTS in 19532 195313
+for MAX_N_SEGMENTS in 1024 2048 19532
 do
 
 SRC_N_SEGMENTSS=(32 64)
@@ -88,7 +88,6 @@ accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29060 run_fine
         --model_cls $BACKBONE_CLS \
         --segment_size $SEGMENT_SIZE \
         --sample_size $SAMPLE_SIZE \
-        --max_n_samples 100 \
         --num_mem_tokens $MEMORY_SIZE \
         --max_n_segments $MAX_N_SEGMENTS\
         --vary_n_segments \

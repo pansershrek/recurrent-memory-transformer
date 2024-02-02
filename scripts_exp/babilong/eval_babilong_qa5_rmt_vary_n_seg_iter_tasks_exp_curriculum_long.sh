@@ -25,7 +25,7 @@ do
 for LR in 5e-05
 do
 
-for MAX_N_SEGMENTS in 1024 2048
+for MAX_N_SEGMENTS in 1024 2048 19532
 do
 
 SRC_N_SEGMENTSS=(16 32)
