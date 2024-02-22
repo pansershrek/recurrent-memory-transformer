@@ -1,19 +1,20 @@
-# Recurrent Memory Transformer implementation compatible with Hugging Face models
+# Recurrent Memory Transformer implementation for Hugging Face models
 
 
-RMT is a memory-augmented segment-level recurrent Transformer. It achieves state-of-the art results on Hyperpartisan dataset and beats Transformer-XL on algorithmic tasks and LM with limited input and memory size.
+## RMT resources
 
->[paper](https://arxiv.org/abs/2304.11062) Scaling Transformer to 1M tokens and beyond with RMT
+[ [paper](https://arxiv.org/abs/2207.06881) ] [ [code](https://github.com/booydar/recurrent-memory-transformer/) ] **Recurrent Memory Transformer** implementation and various training examples.
 
->[paper](https://arxiv.org/abs/2207.06881) [code](https://github.com/booydar/LM-RMT) Recurrent Memory Transformer
+[ [paper](https://arxiv.org/abs/2402.10790) ] [ [code](https://github.com/booydar/recurrent-memory-transformer/tree/babilong-release) ] **BABILong** - a long-context benchmark that supports 20 tasks and various sources of background text. 
+
+[ [code](https://github.com/booydar/babilong) ] **Evaluate your long-context LLM on BABILong!**
+
+RMT is a memory-augmented segment-level recurrent Transformer. We implement our memory mechanism as a wrapper for any Hugging Face model by adding special memory tokens to the input sequence. The model is trained to control both memory operations and sequence representations processing.
+
+<img src="img/RMT_scheme.png" alt="drawing" width="400"/>
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/booydar/t5-experiments/blob/framework_accel/notebooks/rmt_demo_lm.ipynb) Example: LM with RMT
 
-Recurrent Memory Transformer is implemented as follows:
-
-![**RMT**](img/RMT_scheme.png?raw=True)
-
-We implement our memory mechanism with no changes to Transformer model by adding special memory tokens to the input sequence. The model is trained to control both memory operations and sequence representations processing.
 
 ## Installation
 ```bash
@@ -32,7 +33,7 @@ pip install -r requirements.txt
 
 
 ## Citation
-If you find our work useful, please cite the RMT papers:
+If you find our work useful, please consider citing the RMT papers:
 ```
 @inproceedings{
         bulatov2022recurrent,
@@ -50,6 +51,16 @@ If you find our work useful, please cite the RMT papers:
       author={Aydar Bulatov and Yuri Kuratov and Mikhail S. Burtsev},
       year={2023},
       eprint={2304.11062},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+```
+```
+@misc{kuratov2024search,
+      title={In Search of Needles in a 11M Haystack: Recurrent Memory Finds What LLMs Miss}, 
+      author={Yuri Kuratov and Aydar Bulatov and Petr Anokhin and Dmitry Sorokin and Artyom Sorokin and Mikhail Burtsev},
+      year={2024},
+      eprint={2402.10790},
       archivePrefix={arXiv},
       primaryClass={cs.CL}
 }
