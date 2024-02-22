@@ -118,7 +118,7 @@ actions = ['moved', 'went', 'went back', 'journeyed', 'travelled']
 places = ['bathroom', 'hallway', 'garden', 'office', 'bedroom', 'kitchen']
 choices_dict = {'names': names, 'actions': actions, 'places': places}
 
-class MemoryDataset(Dataset):
+class MemoryDataset:
     def __init__(self, choices_dict=choices_dict, num_facts=1, split='train', dataset='quality', num_samples=None):
         self.choices_dict = choices_dict
         self.dataset = load_dataset('tau/scrolls', dataset)[split]

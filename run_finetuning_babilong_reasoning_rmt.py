@@ -115,7 +115,7 @@ parser.add_argument('--warmup_init', action='store_true', default=False,
 
 
 
-class MemoryReasoningDataset(Dataset):
+class MemoryReasoningDataset:
     def __init__(self, split='train', dataset='quality', num_samples=None):
         self.dataset = load_dataset('tau/scrolls', dataset)[split]
         self.fact_dataset = pd.read_csv('data/two_facts_reasoning.csv')
