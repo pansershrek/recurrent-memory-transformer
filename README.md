@@ -1,10 +1,14 @@
 ### This repository replicates the experiments of the AAAI-24 paper: Beyond Attention: Breaking the Limits of Transformer Context Length with Recurrent Memory
 
-### Note: The dataset used in this paper has been updated! 
+<img src="images/results.png" alt="drawing" width="800"/>
+Recurrent Memory Transformer retains information across up to 2 × 10^6 tokens.
+
+### Note: The dataset used in this paper has been [updated](https://arxiv.org/abs/2402.10790)! 
 [ [paper](https://arxiv.org/abs/2402.10790) ] [ [code](https://github.com/booydar/recurrent-memory-transformer/tree/babilong-release) ] **BABILong** - a long-context benchmark that supports 20 tasks and various sources of background text. 
 
-[ [paper](https://arxiv.org/abs/2207.06881) ] [ [code](https://github.com/booydar/recurrent-memory-transformer/) ] Implementation and various training examples for **Recurrent Memory Transformer**.
+[ [code](https://github.com/booydar/babilong) ] Evaluate your long-context LLM on BABILong!
 
+[ [paper](https://arxiv.org/abs/2207.06881) ] [ [code](https://github.com/booydar/recurrent-memory-transformer/) ] Implementation and various training examples for **Recurrent Memory Transformer**.
 
 ## Installation
 ```bash
