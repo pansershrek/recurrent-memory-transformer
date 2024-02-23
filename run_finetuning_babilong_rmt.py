@@ -240,6 +240,10 @@ if __name__ == '__main__':
         collated['attention_mask'] = attention_mask.bool()
         collated['attention_mask_generate'] = (gen_inputs != id_pad_value).bool()
         collated['target_text'] = [b['answer'] for b in batch]
+
+        collated['backgound_text'] = [b['background_text'] for b in batch]
+        collated['facts'] = [b['facts'] for b in batch]
+        collated['question'] = [b['question'] for b in batch]
         return collated
 
     # train_dataset, valid_dataset, test_dataset = dataset["train"], dataset["validation"], dataset["test"]

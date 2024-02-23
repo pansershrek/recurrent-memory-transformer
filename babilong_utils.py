@@ -77,7 +77,13 @@ def sum_lengths(sentences):
 
 # sampler of background text 
 class SentenceSampler:
-    def __init__(self, dataset, tokenizer, min_sentence_len=10, max_sentence_len=None, shuffle=True, random_seed=42):
+    def __init__(self,
+                 dataset,
+                 tokenizer,
+                 min_sentence_len=10,
+                 max_sentence_len=None,
+                 shuffle=True,
+                 random_seed=42):
         self.sample_ind = 0
         self.dataset = dataset
         self.sentences = []
@@ -89,7 +95,8 @@ class SentenceSampler:
         self.gen = np.random.default_rng(seed=random_seed)
 
     def get_sample(self, sample_size):        
-        sample = []
+        tok_sample = []
+        text_sample = []
         total_len = 0
         while True:
             sentences = list(self.sentences)
@@ -98,15 +105,17 @@ class SentenceSampler:
                 if not self.length_is_ok(tokenized):
                     continue
                 total_len += len(tokenized)
-                sample.append(tokenized)
+                tok_sample.append(tokenized)
+                text_sample.append(sent)
                 # 1) - updating list while iterating over it, 2) - don't like updating it on every step
                 #self.sentences = self.sentences[1:]
                 if total_len >= sample_size:
                     self.sentences = self.sentences[i+1:]
                     cutoff = total_len - sample_size
                     if cutoff > 0:
-                        sample[-1] = sample[-1][:-cutoff] 
-                    return sample
+                        tok_sample[-1] = tok_sample[-1][:-cutoff]
+                        text_sample[-1] = self.tokenizer.decode(tok_sample[-1])
+                    return dict(token_sample=tok_sample, text_sample=text_sample)
 
             self.sentences = []
             self.sample_sentences_(sample_size) #appends new sentences, can be updated to just return new sentences
@@ -172,12 +181,14 @@ class NoiseInjectionDataset(Dataset):
 
         sample_size = self.get_sample_size()
         task_len = sum_lengths(facts_tok)
-        background_text_len = sample_size - task_len
-        background_text = self.noise_sampler.get_sample(background_text_len)
-        sample['background_text'] = background_text
+        background_token_len = sample_size - task_len
+        background = self.noise_sampler.get_sample(background_token_len)
+        background_tokens = background['token_sample']
+        sample['background_tokens'] = background['token_sample']
+        sample['background_text'] = background['text_sample']
 
         if self.task_start_pct is None and self.task_end_pct is None:     # if fact position unspecified
-            possible_positions = range(len(background_text) + 1) 
+            possible_positions = range(len(background_tokens) + 1)
         else:
             task_start_ind = int(sample_size * self.task_start_pct)
             task_end_ind = int(sample_size * self.task_end_pct)
@@ -185,24 +196,24 @@ class NoiseInjectionDataset(Dataset):
 
             possible_positions = []                                       # where can we insert facts?
             current_length = 0
-            for i, text in enumerate(background_text):
+            for i, text in enumerate(background_tokens):
                 if (current_length >= task_start_ind) and (current_length < task_end_ind - total_facts_len):
                     possible_positions.append(i)
                 current_length += len(text)
 
             if len(possible_positions) == 0:
                 raise IndexError(f"Unable to insert facts in specified place: {self.task_start_pct, self.task_end_pct}. \
-                                 Total fact length: {total_facts_len}, sentences length: {[len(t) for t in background_text]}. Make the range wider or increase the sample size.")
+                                 Total fact length: {total_facts_len}, sentences length: {[len(t) for t in background_tokens]}. Make the range wider or increase the sample size.")
             
         fact_positions = self.gen.choice(possible_positions, len(facts_tok))
         fact_positions.sort()
-        sample['fact_positions'] = fact_positions                  # positions of facts between noise sentences
+        sample['fact_positions'] = fact_positions  # positions of facts between noise sentences
 
-        updated_sample = [[] for _ in range(len(background_text) + 1)] 
+        updated_sample = [[] for _ in range(len(background_tokens) + 1)]
         for fact, pos in zip(facts_tok, fact_positions):
             updated_sample[pos].append(fact)
 
-        for i, s in enumerate(background_text):
+        for i, s in enumerate(background_tokens):
             updated_sample[i].append(s)
 
         flat = [i for s in updated_sample for i in s]
