@@ -119,6 +119,10 @@ class RecurrentWrapper(torch.nn.Module):
             cell_out, memory_state = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
 
         final_segment = segmented[-1]
+
+        if "max_new_tokens" in generate_kwargs:
+            _ = generate_kwargs.pop("max_length", None)
+
         out = self.memory_cell.generate(**final_segment, memory_state=memory_state, **generate_kwargs)
 
         return out
