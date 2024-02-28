@@ -91,6 +91,9 @@ class SentenceSampler:
     def get_sample(self, sample_size):        
         sample = []
         total_len = 0
+        if sample_size <= 0:
+            return sample
+
         while True:
             sentences = list(self.sentences)
             for i, sent in enumerate(sentences): # add new sentence until sample_size is reached
@@ -173,7 +176,9 @@ class NoiseInjectionDataset(Dataset):
         sample_size = self.get_sample_size()
         task_len = sum_lengths(facts_tok)
         background_text_len = sample_size - task_len
+
         background_text = self.noise_sampler.get_sample(background_text_len)
+
         sample['background_text'] = background_text
 
         if self.task_start_pct is None and self.task_end_pct is None:     # if fact position unspecified

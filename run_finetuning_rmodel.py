@@ -171,14 +171,17 @@ if __name__ == '__main__':
 
     # Prepare datasets
     logger.info(f'preparing dataset for {args.task_dataset}')
-    try:
-        noise_dataset = datasets.load_dataset(args.noise_dataset, args.noise_dataset_split)
-        noise_dataset_train = noise_dataset['train']
-        noise_dataset_test = noise_dataset['test']
-    except ConnectionError:
-        noise_dataset_train = datasets.Dataset.from_file('/home/jovyan/.cache/huggingface/datasets/pg19/default/0.1.0/64837d6fce7251337df051ca74e9a5435d1c9cb7f3033ba257826e44d338f83c/pg19-train.arrow')
-        noise_dataset_test = datasets.Dataset.from_file('/home/jovyan/.cache/huggingface/datasets/pg19/default/0.1.0/64837d6fce7251337df051ca74e9a5435d1c9cb7f3033ba257826e44d338f83c/pg19-test.arrow')
-    
+    noise_dataset = datasets.load_dataset(args.noise_dataset, args.noise_dataset_split)
+    noise_dataset_train = noise_dataset['train']
+    noise_dataset_test = noise_dataset['test']
+    # try:
+    #     noise_dataset = datasets.load_dataset(args.noise_dataset, args.noise_dataset_split)
+    #     noise_dataset_train = noise_dataset['train']
+    #     noise_dataset_test = noise_dataset['test']
+    # except ConnectionError:
+    #     noise_dataset_train = datasets.Dataset.from_file('/home/jovyan/.cache/huggingface/datasets/pg19/default/0.1.0/64837d6fce7251337df051ca74e9a5435d1c9cb7f3033ba257826e44d338f83c/pg19-train.arrow')
+    #     noise_dataset_test = datasets.Dataset.from_file('/home/jovyan/.cache/huggingface/datasets/pg19/default/0.1.0/64837d6fce7251337df051ca74e9a5435d1c9cb7f3033ba257826e44d338f83c/pg19-test.arrow')
+    #
     # task dataset 
     train_path = os.path.join(args.babi_path, f"{args.task_dataset}_train.txt")
     test_path = os.path.join(args.babi_path, f"{args.task_dataset}_test.txt")
@@ -192,7 +195,7 @@ if __name__ == '__main__':
         # train_sample_size = [int(args.sample_size / i) for i in range(1, args.max_n_segments + 1)]
         #train_sample_size = [int(args.segment_size * i) for i in range(1, args.max_n_segments)] + [args.sample_size]
         #np.linargs(32, args.sample_size, 2)
-        train_sample_size = [32, 64]
+        train_sample_size = np.linspace(100, args.sample_size, 5).astype(int)
         train_sample_size = [s - qa_margin for s in train_sample_size]
         logger.info(f'Will be choosing sample size randomly from {train_sample_size} for training')
     else:
