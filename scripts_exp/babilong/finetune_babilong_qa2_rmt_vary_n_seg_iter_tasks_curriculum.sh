@@ -72,12 +72,15 @@ echo RUNNING: TASK_DATASET $TASK_DATASET MEMORY_SIZE $MEMORY_SIZE SEGMENT_SIZE $
 echo SAMPLE_SIZE $SAMPLE_SIZE MODEL_NAME $MODEL_NAME  LR $LR N $N
 echo gradient accumulation steps $GRAD_ACC_STEPS
 
-accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29031 run_finetuning_babilong_rmt.py \
+#accelerate launch --config_file $ACCEL_CONFIG --main_process_port 29031 run_finetuning_babilong_rmt.py \
+python3 run_finetuning_babilong_rmt.py \
         --task_dataset $TASK_DATASET \
         --noise_dataset $NOISE_DATASET \
-        --babi_path /home/jovyan/rmt/babilong/data/tasks_1-20_v1-2/en-10k \
-        --model_path /home/jovyan/rmt/runs/babilong/${TASK_DATASET}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_bptt-${K2}_from_cpt_${SRC_N_SEGMENTS}-${MAX_N_SEGMENTS}/run_$N \
-        --model_cpt /home/jovyan/rmt/runs/babilong/${TASK_DATASET}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${SRC_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_bptt-${K2}_from_cpt_${SRC_SRC_N_SEGMENTS}-${SRC_N_SEGMENTS}/run_$N/model_best \
+        --babi_path /mnt/g.skiba/recurrent-memory-transformer/data/tasks_1-20_v1-2/en-10k \
+        --model_path /mnt/g.skiba/recurrent-memory-transformer/runs/babilong/${TASK_DATASET}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${MAX_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_bptt-${K2}_from_cpt_${SR
+C_N_SEGMENTS}-${MAX_N_SEGMENTS}/run_$N \
+        --model_cpt /mnt/g.skiba/recurrent-memory-transformer/runs/babilong/${TASK_DATASET}/$MODEL_NAME/${SCHEDULER}_adamw_wd1e-03_${SRC_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_bs${TBS}_bptt-${K2}_from_cpt_${SRC
+_SRC_N_SEGMENTS}-${SRC_N_SEGMENTS}/run_$N/model_best \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
