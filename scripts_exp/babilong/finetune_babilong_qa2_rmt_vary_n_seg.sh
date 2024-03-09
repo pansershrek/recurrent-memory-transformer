@@ -47,15 +47,15 @@ K2=-1   # BPTT unroll length
 
 NP=$NP
 ACCEL_CONFIG=/home/jovyan/rmt/babilong/accel_configs/accelerate/deepspeed_bf16_tbs${TBS}bs${BS}g${GRAD_ACC_STEPS}c1.0np${NP}.yaml
-cd accel_configs/
-python create_config.py \
-        --bf16 \
-        --train_batch_size $TBS\
-        --train_micro_batch_size_per_gpu $BS\
-        --gradient_accumulation_steps $GRAD_ACC_STEPS\
-        --np $NP\
-        --gradient_clipping 1.0
-cd ..
+#cd accel_configs/
+#python create_config.py \
+#        --bf16 \
+#        --train_batch_size $TBS\
+#        --train_micro_batch_size_per_gpu $BS\
+#        --gradient_accumulation_steps $GRAD_ACC_STEPS\
+#        --np $NP\
+#        --gradient_clipping 1.0
+#cd ..
 
 echo RUNNING: TASK_DATASET $TASK_DATASET MEMORY_SIZE $MEMORY_SIZE SEGMENT_SIZE $SEGMENT_SIZE MAX_N_SEGMENTS $MAX_N_SEGMENTS
 echo SAMPLE_SIZE $SAMPLE_SIZE MODEL_NAME $MODEL_NAME  LR $LR N $N
