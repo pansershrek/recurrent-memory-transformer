@@ -23,7 +23,7 @@ from lm_experiments_tools import Trainer, TrainerArgs
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.distributed import DistributedSampler
 
-from peft import get_peft_model, LoraConfig, TaskType
+#from peft import get_peft_model, LoraConfig, TaskType
 # load_dotenv()
 from babilong_utils import TaskDataset, SentenceSampler, NoiseInjectionDataset
 
