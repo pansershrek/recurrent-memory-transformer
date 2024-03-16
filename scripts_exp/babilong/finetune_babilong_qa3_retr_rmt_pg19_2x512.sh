@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CUDA_VISIBLE_DEVICES=1,2 NP=2 ./finetune_babilong_baseline.sh
+# CUDA_VISIBLE_DEVICES=0,3 NP=2 ./finetune_babilong_baseline.sh
 set -e
 cd ../..
 
@@ -8,7 +8,7 @@ CUDA_LAUNCH_BLOCKING=1
 
 MODEL_TYPE=decoder
 MEMORY_CELL=modeling_rmt.language_modeling_mem_retrieve:MemoryCell
-RECURRENT_WRAPPER=modeling_rmt.language_modeling_mem_retrieve:RecurrentWrapper
+RECURRENT_WRAPPER=modeling_rmt.language_modeling_mem_retrieve:RecurrentWrapperTwoSteps
 BACKBONE_CLS=transformers:AutoModelForCausalLM
 TASK_DATASET=qa3_three-supporting-facts
 NOISE_DATASET=pg19
