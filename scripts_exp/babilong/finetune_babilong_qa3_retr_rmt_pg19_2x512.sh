@@ -39,7 +39,8 @@ for N in 1 2
 do
 for MEMORY_SIZE in 16
 do
-for x_READ_MEM in 2
+for x_READ_MEM in 1
+#for x_READ_MEM in 2
 do
 READ_MEM_SIZE=$((MEMORY_SIZE*x_READ_MEM))
 WRITE_MEM_SIZE=$MEMORY_SIZE

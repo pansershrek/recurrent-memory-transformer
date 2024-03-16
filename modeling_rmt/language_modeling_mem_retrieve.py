@@ -154,7 +154,8 @@ class RecurrentWrapper(torch.nn.Module):
         for seg_num, segment in enumerate(segmented):
             retrieved_memory = self.retrieve_from_past_memory_states(memory_states, memory_state)
             if memory_state is not None and retrieved_memory is not None:
-                memory_state = torch.cat([memory_state, retrieved_memory], dim=1)
+                memory_state = retrieved_memory
+                #memory_state = torch.cat([memory_state, retrieved_memory], dim=1)
             cell_out, memory_state = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
             cell_outputs.append(cell_out)
             memory_state = self.manage_gradients(memory_state, seg_num)

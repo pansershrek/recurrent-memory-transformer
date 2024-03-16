@@ -665,7 +665,7 @@ class Trainer:
         """
         load_path = Path(load_path)
         load_only_model_ckpt = (reset_optimizer and reset_lr) or load_path.is_file()
-        load_only_model_ckpt = True
+        #load_only_model_ckpt = True
         # load trainer state if there is one
         trainer_state = {}
         trainer_state_path = None

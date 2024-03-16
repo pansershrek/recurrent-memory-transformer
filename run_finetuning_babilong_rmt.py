@@ -543,7 +543,7 @@ if __name__ == '__main__':
         if args.save_best:
             best_model_path = str(Path(args.model_path) / 'model_best')
             logger.info(f'Loading best saved model from {best_model_path}')
-            trainer.load(best_model_path)
+            #trainer.load(best_model_path)
         # if valid_dataloader is not None:
         #     logger.info('Runnning validation on valid data:')
         #     trainer.validate(valid_dataloader, write_tb=False, split='valid')
