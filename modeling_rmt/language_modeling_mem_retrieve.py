@@ -355,6 +355,14 @@ class RecurrentWrapperTwoSteps(torch.nn.Module):
         memory_states = []
         segmented = self.segment(input_ids=input_ids, attention_mask=attention_mask)
 
+        for seg_num, segment in enumerate(segmented):
+            retrieved_memory = self.retrieve_from_past_memory_states(memory_states, memory_state)
+            if memory_state is not None and retrieved_memory is not None:
+                #memory_state = retrieved_memory
+                memory_state = torch.cat([memory_state, retrieved_memory], dim=1)
+            cell_out, memory_state = self.memory_cell(**segment, memory_state=memory_state, output_hidden_states=True)
+            memory_states += [memory_state.detach()]
+
         for seg_num, segment in enumerate(segmented[:-1]):
             retrieved_memory = self.retrieve_from_past_memory_states(memory_states, memory_state)
             if memory_state is not None and retrieved_memory is not None:
