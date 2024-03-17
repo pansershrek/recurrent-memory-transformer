@@ -144,6 +144,7 @@ parser.add_argument('--pile_subset_names', type=str, default=None, help='use onl
 parser.add_argument('--min_tokens_in_document', type=int, default=None, help='do not use documents shorter than this value')
 parser.add_argument('--max_tokens_in_document', type=int, default=None, help='do not use documents longer than this value')
 
+from transformers import TransfoXLTokenizer, TransfoXLLMHeadModel
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -199,7 +200,7 @@ if __name__ == '__main__':
     if not args.from_pretrained:
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     else:
-        tokenizer = AutoTokenizer.from_pretrained(args.from_pretrained, revision=revision)
+        tokenizer = TransfoXLTokenizer.from_pretrained(args.from_pretrained, revision=revision)
 
     # Prepare datasets
     logger.info(f'preparing dataset for {args.task_dataset}')
@@ -327,7 +328,7 @@ if __name__ == '__main__':
             model = model_cls(config=model_cfg)
         else:
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
-            model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False, revision=revision)
+            model = TransfoXLLMHeadModel.from_pretrained(args.from_pretrained, use_safetensors=False, revision=revision)
 
     if args.use_lora:
         peft_config = LoraConfig(
