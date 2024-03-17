@@ -14,7 +14,7 @@ TASK_DATASET=qa3_three-supporting-facts
 NOISE_DATASET=pg19
 METRIC=exact_match
 
-MODEL_NAME="M4-ai/tau-0.5B"  # backbone model
+MODEL_NAME="transfo-xl/transfo-xl-wt103"  # backbone model
 SEGMENT_SIZE=512 # size of one segment in tokens
 SAMPLE_SIZE=1024 # length of task sample in tokens
 MEMORY_SIZE=16

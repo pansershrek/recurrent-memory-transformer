@@ -195,11 +195,11 @@ if __name__ == '__main__':
 
     # create model path, save configuration, setups logging and saves current git diff
     prepare_run(args, logger, logger_fmt)
-
+    revision = '40a186da79458c9f9de846edfaea79c412137f97'
     if not args.from_pretrained:
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     else:
-        tokenizer = AutoTokenizer.from_pretrained(args.from_pretrained)
+        tokenizer = AutoTokenizer.from_pretrained(args.from_pretrained, revision=revision)
 
     # Prepare datasets
     logger.info(f'preparing dataset for {args.task_dataset}')
@@ -327,7 +327,7 @@ if __name__ == '__main__':
             model = model_cls(config=model_cfg)
         else:
             logger.info(f'Loading pretrained model: {args.from_pretrained}')
-            model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False)
+            model = model_cls.from_pretrained(args.from_pretrained, use_safetensors=False, revision=revision)
 
     if args.use_lora:
         peft_config = LoraConfig(
