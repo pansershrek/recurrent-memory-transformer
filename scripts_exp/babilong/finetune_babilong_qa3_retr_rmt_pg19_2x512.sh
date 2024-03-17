@@ -14,7 +14,7 @@ TASK_DATASET=qa3_three-supporting-facts
 NOISE_DATASET=pg19
 METRIC=exact_match
 
-MODEL_NAME=gpt2  # backbone model
+MODEL_NAME="M4-ai/tau-0.5B"  # backbone model
 SEGMENT_SIZE=512 # size of one segment in tokens
 SAMPLE_SIZE=1024 # length of task sample in tokens
 MEMORY_SIZE=16
@@ -26,7 +26,7 @@ RETR_MODE='attention'
 
 ITERS=10000
 TBS=64
-BS=16
+BS=8
 
 SCHEDULER=linear
 LR=1e-04
