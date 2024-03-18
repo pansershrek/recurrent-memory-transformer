@@ -30,7 +30,7 @@ BS=8
 
 SCHEDULER=linear
 LR=1e-04
-WD=1e-03
+WD=1e-05
 
 for LR in 5e-05
 do

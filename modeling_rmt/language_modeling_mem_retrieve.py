@@ -117,7 +117,7 @@ class RecurrentWrapper(torch.nn.Module):
         self.k_proj = torch.nn.Linear(self.memory_dim, self.memory_dim)
         self.v_proj = torch.nn.Linear(self.memory_dim, self.memory_dim)
         self.o_proj = torch.nn.Linear(self.memory_dim, self.memory_dim)
-        self.act = ACT2FN[self.memory_cell.model.config.activation_function]
+        self.act = ACT2FN["gelu_new"]
 
     def retrieve_from_past_memory_states(self, past_states, current_state):
         if len(past_states) == 0:
