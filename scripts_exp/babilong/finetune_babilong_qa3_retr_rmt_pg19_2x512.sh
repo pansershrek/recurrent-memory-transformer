@@ -84,7 +84,7 @@ python3 run_finetuning_babilong_rmt.py \
         --optimizer AdamW  --weight_decay $WD \
         --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/20)) \
         --data_n_workers 2 \
-        --log_interval 100 --valid_interval 100 \
+        --log_interval 100 --valid_interval 100 --use_generate_on_valid \
         --optimize_metric $METRIC --optimize_mode max --save_best \
         --early_stopping_patience 15 \
         --seed $(($N+42)) \
