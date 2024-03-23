@@ -23,7 +23,7 @@ from lm_experiments_tools import Trainer, TrainerArgs
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.distributed import DistributedSampler
 
-from peft import get_peft_model, LoraConfig, TaskType
+#from peft import get_peft_model, LoraConfig, TaskType
 # load_dotenv()
 from babilong_utils import TaskDataset, SentenceSampler, NoiseInjectionDataset
 
@@ -543,7 +543,7 @@ if __name__ == '__main__':
         if args.save_best:
             best_model_path = str(Path(args.model_path) / 'model_best')
             logger.info(f'Loading best saved model from {best_model_path}')
-            trainer.load(best_model_path)
+            #trainer.load(best_model_path)
         # if valid_dataloader is not None:
         #     logger.info('Runnning validation on valid data:')
         #     trainer.validate(valid_dataloader, write_tb=False, split='valid')
