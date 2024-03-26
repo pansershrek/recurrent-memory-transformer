@@ -726,7 +726,7 @@ class Trainer:
                 #     to_save['lr_scheduler_state_dict'] = self.lr_scheduler.state_dict()
                 torch.save(to_save, f'{save_path}/trainer.pckl')
                 ts = f"{time.time()}"
-                self.model.save_pre(f"{save_path}/{ts}_best_model.bin")
+                self.model.save_pretrained(f"{save_path}/{ts}_best_model.bin")
             logger.info(f'Model, trainer, and accelerate state were saved to {save_path}')
 
     @rank_0
