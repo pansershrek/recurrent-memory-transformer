@@ -83,7 +83,7 @@ python3 run_finetuning_babilong_rmt.py \
         --save_best \
         --k2 $K2 \
         --optimizer AdamW  --weight_decay $WD \
-        --lr ${LR} --lr_scheduler $SCHEDULER --num_warmup_steps $(($ITERS/20)) \
+        --lr ${LR} --num_warmup_steps $(($ITERS/20)) \
         --data_n_workers 2 \
         --use_generate_on_valid \
         --validate_only \
