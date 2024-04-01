@@ -373,7 +373,8 @@ if __name__ == '__main__':
 
         ## load cpt of rmt
         if args.model_cpt:
-            model_cpt = os.path.join(args.model_cpt, "pytorch_model.bin")
+            #model_cpt = os.path.join(args.model_cpt, "pytorch_model.bin")
+            model_cpt = args.model_cpt
             cpt = torch.load(model_cpt, map_location='cpu')
             model.load_state_dict(cpt, strict=False)
             logger.info(f'Loaded RMT state dict from: {args.model_cpt}')

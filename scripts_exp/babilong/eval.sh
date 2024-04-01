@@ -63,7 +63,7 @@ python3 run_finetuning_babilong_rmt.py \
         --noise_dataset $NOISE_DATASET \
         --babi_path /mnt/g.skiba/recurrent-memory-transformer/data/tasks_1-20_v1-2/en-10k \
     --model_path /mnt/g.skiba/recurrent-memory-transformer/runs/babilong/${TASK_DATASET}/${NOISE_DATASET}/$MODEL_NAME/lr${LR}_${SCHEDULER}_adamw_wd${WD}_seqlen${SAMPLE_SIZE}_${MAX_N_SEGMENTS}x${SEGMENT_SIZE}_mem${MEMORY_SIZE}_r${READ_MEM_SIZE}_w${WRITE_MEM_SIZE}_bs${TBS}_${SEGMENT_ORDERING}_bptt-${K2}_sp${SAMPLING_PROB}_retr_${RETR_MODE}_from_0x${SEGMENT_SIZE}/run_$N \
-        --model_cpt /mnt/g.skiba/recurrent-memory-transformer/model_best \
+        --model_cpt /mnt/g.skiba/recurrent-memory-transformer/model_best/1711470974.1320057_best_model.bin \
         --from_pretrained $MODEL_NAME \
         --model_type $MODEL_TYPE \
         --memory_cell_cls $MEMORY_CELL \
