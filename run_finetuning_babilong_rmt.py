@@ -567,4 +567,4 @@ if __name__ == '__main__':
             logger.info('Runnning validation on test data:')
             trainer.validate(test_dataloader, write_tb=False,
                              split=f'test_{args.sample_size}_{args.max_n_segments}x{args.segment_size}')
-            trainer.save_metrics("/mnt/g.skiba/recurrent-memory-transformer/scripts_exp/babilong/val_metrics.json")
+            trainer.save_metrics("/mnt/g.skiba/recurrent-memory-transformer/scripts_exp/babilong/")
